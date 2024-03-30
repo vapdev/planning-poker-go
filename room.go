@@ -30,14 +30,14 @@ func createRoom(database *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Create a new game and add it to the games map
 		games[strconv.FormatInt(roomID, 10)] = &Game{
 			Players: []*Player{},
-			// Add other fields as necessary
+			admin:   userID,
 		}
 
 		sendResponse(w, map[string]interface{}{
 			"roomID": int(roomID),
+			"admin":  userID,
 			"userID": userID,
 		})
 	}
@@ -68,6 +68,23 @@ func leaveRoom(database *sql.DB) http.HandlerFunc {
 		if !roomExists || !userExists {
 			http.Error(w, "Room ID or User ID not provided", http.StatusBadRequest)
 			return
+		}
+
+		// Check if the user is the admin
+		var adminID int
+		err = database.QueryRow("SELECT admin FROM rooms WHERE id = ?", int(roomID)).Scan(&adminID)
+		if err != nil {
+			http.Error(w, "Failed to retrieve admin from database", http.StatusInternalServerError)
+			return
+		}
+
+		if adminID == int(userID) {
+			// If the user is the admin, set another player as the admin
+			_, err = database.Exec("UPDATE rooms SET admin = (SELECT user_id FROM room_users WHERE room_id = ? LIMIT 1) WHERE id = ?", int(roomID), int(roomID))
+			if err != nil {
+				http.Error(w, "Failed to update admin in database", http.StatusInternalServerError)
+				return
+			}
 		}
 
 		// Delete the record from the database
@@ -141,11 +158,23 @@ func createRoomInDB(database *sql.DB, userID int) (int64, int, error) {
 		return 0, 0, err
 	}
 
-	statement, err := tx.Prepare("INSERT INTO rooms (slug) VALUES (?)")
+	var count int
+	err = tx.QueryRow("SELECT COUNT(*) FROM users WHERE id = ?", userID).Scan(&count)
 	if err != nil {
 		return 0, 0, err
 	}
-	res, err := statement.Exec(generateRandomString(5))
+	if count == 0 {
+		_, err = tx.Exec("INSERT INTO users (id, name) VALUES (?, 'Admin')", userID)
+		if err != nil {
+			return 0, 0, err
+		}
+	}
+
+	statement, err := tx.Prepare("INSERT INTO rooms (slug, admin) VALUES (?, ?)")
+	if err != nil {
+		return 0, 0, err
+	}
+	res, err := statement.Exec(generateRandomString(5), userID)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -155,37 +184,11 @@ func createRoomInDB(database *sql.DB, userID int) (int64, int, error) {
 		return 0, 0, err
 	}
 
-	if userID == 0 {
-		statement, err = tx.Prepare("INSERT INTO users (name, admin) VALUES (?, ?)")
-		if err != nil {
-			return 0, 0, err
-		}
-		res, err = statement.Exec("User", 1)
-		if err != nil {
-			return 0, 0, err
-		}
-		lastInsertID, err := res.LastInsertId()
-		if err != nil {
-			return 0, 0, err
-		}
-		userID = int(lastInsertID)
-		log.Println(userID)
-	} else {
-		statement, err = tx.Prepare("UPDATE users SET admin = 1 WHERE id = ?")
-		if err != nil {
-			return 0, 0, err
-		}
-		_, err = statement.Exec(userID)
-		if err != nil {
-			return 0, 0, err
-		}
-	}
-
-	statement, err = tx.Prepare("INSERT INTO room_users (room_id, user_id, admin) VALUES (?, ?, ?)")
+	statement, err = tx.Prepare("INSERT INTO room_users (room_id, user_id) VALUES (?, ?)")
 	if err != nil {
 		return 0, 0, err
 	}
-	_, err = statement.Exec(roomID, userID, true)
+	_, err = statement.Exec(roomID, userID)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -201,7 +204,7 @@ func createRoomInDB(database *sql.DB, userID int) (int64, int, error) {
 func addUserToRoom(database *sql.DB, userID int, roomID int) (int, int, error) {
 	if userID == 0 {
 		log.Println("User not found, creating new user")
-		err := database.QueryRow("INSERT INTO users (name, admin) VALUES ('JoinUser', false) RETURNING id").Scan(&userID)
+		err := database.QueryRow("INSERT INTO users (name) VALUES ('JoinUser') RETURNING id").Scan(&userID)
 		if err != nil {
 			return 0, 0, err
 		}
@@ -219,11 +222,11 @@ func addUserToRoom(database *sql.DB, userID int, roomID int) (int, int, error) {
 		return roomID, userID, nil
 	}
 
-	statement, err := database.Prepare("INSERT INTO room_users (room_id, user_id, admin) VALUES (?, ?, ?)")
+	statement, err := database.Prepare("INSERT INTO room_users (room_id, user_id) VALUES (?, ?)")
 	if err != nil {
 		return 0, 0, err
 	}
-	_, err = statement.Exec(roomID, userID, false)
+	_, err = statement.Exec(roomID, userID)
 	if err != nil {
 		return 0, 0, err
 	}

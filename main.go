@@ -23,6 +23,7 @@ type Player struct {
 
 type Game struct {
 	Players []*Player
+	admin   int
 }
 
 var games = make(map[string]*Game)
@@ -109,84 +110,6 @@ func sendGameState(game *Game) {
 			}
 		}
 	}
-}
-
-func handleLeaveRoom(msg map[string]interface{}, game *Game, userID int) {
-	for i, player := range game.Players {
-		if player.ID == userID {
-			game.Players = append(game.Players[:i], game.Players[i+1:]...)
-			break
-		}
-	}
-}
-
-func handleVote(msg map[string]interface{}, game *Game, userID int) {
-	vote, ok := msg["vote"].(float64)
-	if !ok {
-		log.Printf("vote is not a float64: %v", msg["vote"])
-		return
-	}
-
-	voteInt := int(vote)
-
-	for _, player := range game.Players {
-		if player.ID == userID {
-			if player.Voted && player.Vote == voteInt {
-				// The player has already voted for this option, so remove the vote
-				player.Voted = false
-				player.Vote = 0
-			} else {
-				// The player hasn't voted for this option yet, so cast the vote
-				player.Voted = true
-				player.Vote = voteInt
-			}
-			break
-		}
-	}
-}
-
-func handleNewPlayer(msg map[string]interface{}, game *Game, userID int, ws *websocket.Conn) {
-	name, ok := msg["name"].(string)
-	if !ok {
-		log.Printf("name is not a string: %v", msg["name"])
-		return
-	}
-
-	// Check if the user already exists in the game's players
-	for _, player := range game.Players {
-		if player.ID == userID {
-			log.Printf("User %d already exists in the game", userID)
-			return
-		}
-	}
-
-	player := &Player{
-		ID:    userID,
-		Name:  name,
-		Score: 0,
-		Voted: false,
-		Admin: false,
-		ws:    ws,
-	}
-	game.Players = append(game.Players, player)
-}
-
-func handleNewAdmin(msg map[string]interface{}, game *Game, userID int, ws *websocket.Conn) {
-	name, ok := msg["name"].(string)
-	if !ok {
-		log.Printf("name is not a string: %v", msg["name"])
-		return
-	}
-
-	player := &Player{
-		ID:    userID,
-		Name:  name,
-		Score: 0,
-		Voted: false,
-		Admin: true,
-		ws:    ws,
-	}
-	game.Players = append(game.Players, player)
 }
 
 func main() {
