@@ -16,13 +16,13 @@ type Player struct {
 	Name  string `json:"name"`
 	Score int    `json:"score"`
 	Voted bool   `json:"voted"`
+	Vote  int    `json:"vote"`
 	Admin bool   `json:"admin"`
 	ws    *websocket.Conn
 }
 
 type Game struct {
 	Players []*Player
-	Votes   map[string]int
 }
 
 var games = make(map[string]*Game)
@@ -100,7 +100,6 @@ func sendGameState(game *Game) {
 		msg := map[string]interface{}{
 			"type":    "gameState",
 			"players": game.Players,
-			"votes":   game.Votes,
 		}
 		if player.ws != nil {
 			err := player.ws.WriteJSON(msg)
@@ -129,7 +128,21 @@ func handleVote(msg map[string]interface{}, game *Game, userID int) {
 	}
 
 	voteInt := int(vote)
-	game.Votes[strconv.Itoa(userID)] = voteInt
+
+	for _, player := range game.Players {
+		if player.ID == userID {
+			if player.Voted && player.Vote == voteInt {
+				// The player has already voted for this option, so remove the vote
+				player.Voted = false
+				player.Vote = 0
+			} else {
+				// The player hasn't voted for this option yet, so cast the vote
+				player.Voted = true
+				player.Vote = voteInt
+			}
+			break
+		}
+	}
 }
 
 func handleNewPlayer(msg map[string]interface{}, game *Game, userID int, ws *websocket.Conn) {
@@ -193,20 +206,4 @@ func main() {
 
 	log.Println("Starting server on :8080")
 	log.Fatal(http.ListenAndServe(":8080", r))
-}
-
-func enableCors(fn http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
-
-		// Handle OPTIONS requests
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-
-		fn(w, r)
-	}
 }

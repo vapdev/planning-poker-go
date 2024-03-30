@@ -33,7 +33,6 @@ func createRoom(database *sql.DB) http.HandlerFunc {
 		// Create a new game and add it to the games map
 		games[strconv.FormatInt(roomID, 10)] = &Game{
 			Players: []*Player{},
-			Votes:   make(map[string]int),
 			// Add other fields as necessary
 		}
 
@@ -102,7 +101,6 @@ func joinRoom(database *sql.DB) http.HandlerFunc {
 		if _, exists := games[roomIDStr]; !exists {
 			games[roomIDStr] = &Game{
 				Players: []*Player{},
-				Votes:   make(map[string]int),
 				// Add other fields as necessary
 			}
 		}
@@ -119,35 +117,22 @@ func joinRoom(database *sql.DB) http.HandlerFunc {
 
 func vote(database *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		userID, _ := strconv.Atoi(r.URL.Query().Get("userID"))
-		roomID, _ := strconv.Atoi(r.URL.Query().Get("roomID"))
-		vote, _ := strconv.Atoi(r.URL.Query().Get("vote"))
+		var req struct {
+			UserID int `json:"userID"`
+			RoomID int `json:"roomID"`
+			Vote   int `json:"vote"`
+		}
 
-		if err := castVote(database, roomID, userID, vote); handleError(w, err) {
+		if err := json.NewDecoder(r.Body).Decode(&req); handleError(w, err) {
 			return
 		}
 
-		fmt.Fprintf(w, "User %d voted %d in room %d\n", userID, vote, roomID)
-	}
-}
+		if err := castVote(database, req.RoomID, req.UserID, req.Vote); handleError(w, err) {
+			return
+		}
 
-func handleError(w http.ResponseWriter, err error) bool {
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return true
+		fmt.Fprintf(w, "User %d voted %d in room %d\n", req.UserID, req.Vote, req.RoomID)
 	}
-	return false
-}
-
-func sendResponse(w http.ResponseWriter, data map[string]interface{}) {
-	jsonData, err := json.Marshal(data)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(jsonData)
 }
 
 func createRoomInDB(database *sql.DB, userID int) (int64, int, error) {
@@ -247,13 +232,47 @@ func addUserToRoom(database *sql.DB, userID int, roomID int) (int, int, error) {
 }
 
 func castVote(database *sql.DB, roomID, userID, vote int) error {
-	statement, err := database.Prepare("INSERT INTO votes (room_id, user_id, vote) VALUES (?, ?, ?)")
-	if err != nil {
+	// Check if a vote from the user already exists
+	var existingVote int
+	err := database.QueryRow("SELECT vote FROM votes WHERE room_id = ? AND user_id = ?", roomID, userID).Scan(&existingVote)
+
+	if err != nil && err != sql.ErrNoRows {
 		return err
 	}
-	_, err = statement.Exec(roomID, userID, vote)
-	if err != nil {
-		return err
+
+	if err == sql.ErrNoRows {
+		// No existing vote, insert new vote
+		statement, err := database.Prepare("INSERT INTO votes (room_id, user_id, vote) VALUES (?, ?, ?)")
+		if err != nil {
+			return err
+		}
+		_, err = statement.Exec(roomID, userID, vote)
+		if err != nil {
+			return err
+		}
+	} else {
+		// Existing vote
+		if existingVote == vote {
+			// Same vote, remove it
+			statement, err := database.Prepare("DELETE FROM votes WHERE room_id = ? AND user_id = ?")
+			if err != nil {
+				return err
+			}
+			_, err = statement.Exec(roomID, userID)
+			if err != nil {
+				return err
+			}
+		} else {
+			// Different vote, update it
+			statement, err := database.Prepare("UPDATE votes SET vote = ? WHERE room_id = ? AND user_id = ?")
+			if err != nil {
+				return err
+			}
+			_, err = statement.Exec(vote, roomID, userID)
+			if err != nil {
+				return err
+			}
+		}
 	}
 
 	return nil
