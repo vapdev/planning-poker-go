@@ -33,6 +33,7 @@ func createRoom(database *sql.DB) http.HandlerFunc {
 		games[strconv.FormatInt(roomID, 10)] = &Game{
 			Players: []*Player{},
 			admin:   userID,
+			roomID:  int(roomID),
 		}
 
 		sendResponse(w, map[string]interface{}{
@@ -129,6 +130,105 @@ func joinRoom(database *sql.DB) http.HandlerFunc {
 			"roomID": roomID,
 			"userID": userID,
 		})
+	}
+}
+
+func resetVotes(database *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			RoomID int `json:"roomID"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&req); handleError(w, err) {
+			return
+		}
+
+		_, err := database.Exec("DELETE FROM votes WHERE room_id = ?", req.RoomID)
+		if handleError(w, err) {
+			return
+		}
+
+		_, err = database.Exec("UPDATE rooms SET showCards = 0 WHERE id = ?", req.RoomID)
+		if handleError(w, err) {
+			return
+		}
+
+		game, exists := games[strconv.Itoa(req.RoomID)]
+		if exists {
+			game.showCards = false
+			for _, player := range game.Players {
+				player.Voted = false
+				player.Vote = 0
+			}
+			sendGameState(game)
+		}
+	}
+}
+
+func autoShowCards(database *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			RoomID int `json:"roomID"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&req); handleError(w, err) {
+			return
+		}
+
+		var currentAutoShowState bool
+		err := database.QueryRow("SELECT autoShowCards FROM rooms WHERE id = ?", req.RoomID).Scan(&currentAutoShowState)
+		if handleError(w, err) {
+			return
+		}
+
+		newAutoShowState := !currentAutoShowState
+		_, err = database.Exec("UPDATE rooms SET autoShowCards = ? WHERE id = ?", newAutoShowState, req.RoomID)
+		if handleError(w, err) {
+			return
+		}
+
+		game, exists := games[strconv.Itoa(req.RoomID)]
+		if exists {
+			game.autoShowCards = newAutoShowState
+			if !newAutoShowState {
+				game.showCards = false
+				_, err = database.Exec("UPDATE rooms SET showCards = ? WHERE id = ?", false, req.RoomID)
+				if handleError(w, err) {
+					return
+				}
+			}
+			sendGameState(game)
+		}
+	}
+}
+
+func showCards(database *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			RoomID int `json:"roomID"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&req); handleError(w, err) {
+			return
+		}
+
+		var currentShowState bool
+		err := database.QueryRow("SELECT showCards FROM rooms WHERE id = ?", req.RoomID).Scan(&currentShowState)
+		if handleError(w, err) {
+			return
+		}
+
+		newShowState := !currentShowState
+		_, err = database.Exec("UPDATE rooms SET showCards = ? WHERE id = ?", newShowState, req.RoomID)
+		if handleError(w, err) {
+			return
+		}
+
+		game, exists := games[strconv.Itoa(req.RoomID)]
+		if exists {
+			game.showCards = newShowState
+			sendGameState(game)
+		}
 	}
 }
 
