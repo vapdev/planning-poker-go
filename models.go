@@ -4,6 +4,7 @@ import "github.com/gorilla/websocket"
 
 type Player struct {
 	ID    int    `json:"id"`
+	UUID  string `json:"uuid"`
 	Name  string `json:"name"`
 	Score int    `json:"score"`
 	Voted bool   `json:"voted"`

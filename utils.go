@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"math/rand"
 	"net/http"
@@ -33,4 +34,22 @@ func sendResponse(w http.ResponseWriter, data map[string]interface{}) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(jsonData)
+}
+
+func getUserIDFromUUID(db *sql.DB, uuid string) (int64, error) {
+	var id int64
+	err := db.QueryRow("SELECT id FROM users WHERE uuid = ?", uuid).Scan(&id)
+	if err != nil {
+		return 0, err
+	}
+	return id, nil
+}
+
+func getRoomIDFromUUID(db *sql.DB, uuid string) (int, error) {
+	var id int
+	err := db.QueryRow("SELECT id FROM rooms WHERE uuid = ?", uuid).Scan(&id)
+	if err != nil {
+		return 0, err
+	}
+	return id, nil
 }

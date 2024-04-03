@@ -6,7 +6,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-func handleLeaveRoom(msg map[string]interface{}, game *Game, userID int) {
+func handleLeaveRoom(game *Game, userID int) {
 	var newAdmin *Player
 	for i, player := range game.Players {
 		if player.ID == userID {
@@ -66,12 +66,17 @@ func handleNewPlayer(msg map[string]interface{}, game *Game, userID int, ws *web
 		}
 	}
 
+	isAdmin := false
+	if len(game.Players) == 0 {
+		isAdmin = true
+	}
+
 	player := &Player{
 		ID:    userID,
 		Name:  name,
 		Score: 0,
 		Voted: false,
-		Admin: false,
+		Admin: isAdmin,
 		ws:    ws,
 	}
 	game.Players = append(game.Players, player)
