@@ -281,7 +281,12 @@ func createRoomInDB(database *sql.DB, userUUID string) (string, string, error) {
 		return "", "", err
 	}
 	if count == 0 {
-		_, err = tx.Exec("INSERT INTO users (name, uuid) VALUES ('Admin', ?)", userUUID)
+		res, err := tx.Exec("INSERT INTO users (name, uuid) VALUES ('Admin', ?)", userUUID)
+		if err != nil {
+			log.Printf("Error inserting user: %v", err)
+			return "", "", err
+		}
+		userID, err = res.LastInsertId()
 		if err != nil {
 			log.Printf("Error inserting user: %v", err)
 			return "", "", err
@@ -328,7 +333,6 @@ func createRoomInDB(database *sql.DB, userUUID string) (string, string, error) {
 func addUserToRoom(database *sql.DB, userUUID string, roomUUID string) (string, string, error) {
 	var userID int64
 	var err error
-
 	if userUUID == "" {
 		userUUID = generateUuid()
 		res, _ := database.Exec("INSERT INTO users (name, uuid) VALUES ('JoinUser', ?)", userUUID)
@@ -395,7 +399,7 @@ func castVote(database *sql.DB, roomID, userID, vote int) error {
 		// Existing vote
 		if existingVote == vote {
 			// Same vote, remove it
-			statement, err := database.Prepare("DELETE FROM votes WHERE room_id = ? AND user_id = ?")
+			statement, err := database.Prepare("DELETE FROM votes WHERE room_idPrepare = ? AND user_id = ?")
 			if err != nil {
 				return err
 			}
