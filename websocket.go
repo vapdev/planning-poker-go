@@ -1,9 +1,9 @@
 package main
 
 import (
+	"database/sql"
 	"log"
 	"net/http"
-	"strconv"
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
@@ -15,16 +15,29 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin:     func(r *http.Request) bool { return true },
 }
 
-func handleMessage(msg map[string]interface{}, game *Game, userID int, ws *websocket.Conn) {
+func getDB() *sql.DB {
+	db, err := sql.Open("sqlite3", "planningpoker.db")
+	if err != nil {
+		log.Fatal(err)
+	}
+	return db
+}
+
+func handleMessage(msg map[string]interface{}, game *Game, userUUID string, ws *websocket.Conn) {
+	db := getDB()
+	userID, err := getUserIDFromUUID(db, userUUID)
+	if err != nil {
+		log.Printf("Error getting user ID from UUID: %v", err)
+	}
 	switch msg["type"] {
 	case "vote":
-		handleVote(msg, game, userID)
+		handleVote(msg, game, int(userID))
 	case "newPlayer":
-		handleNewPlayer(msg, game, userID, ws)
+		handleNewPlayer(msg, game, int(userID), userUUID, ws)
 	case "newAdmin":
-		handleNewAdmin(msg, game, userID, ws)
+		handleNewAdmin(msg, game, int(userID), userUUID, ws)
 	case "playerLeft":
-		handleLeaveRoom(msg, game, userID)
+		handleLeaveRoom(game, int(userID))
 	}
 	sendGameState(game)
 }
@@ -49,7 +62,7 @@ func sendGameState(game *Game) {
 			"players":       game.Players,
 			"showCards":     game.showCards,
 			"autoShowCards": game.autoShowCards,
-			"roomID":        game.roomID,
+			"roomUUID":      game.roomUUID,
 			"admin":         game.admin,
 		}
 		if player.ws != nil {
@@ -64,17 +77,14 @@ func sendGameState(game *Game) {
 
 func handleConnections(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
-	roomID, roomExists := params["roomID"]
-	userIDStr, userExists := params["userID"]
+	roomUUID, roomExists := params["roomUUID"]
+	userUUID, userExists := params["userUUID"]
+
+	log.Println("roomUUID: ", roomUUID)
+	log.Println("userUUID: ", userUUID)
 
 	if !roomExists || !userExists {
-		log.Println("Room ID or User ID not provided")
-		return
-	}
-
-	userID, err := strconv.Atoi(userIDStr)
-	if err != nil {
-		log.Printf("User ID is not an integer: %v", err)
+		log.Println("Room ID or User UUID not provided")
 		return
 	}
 
@@ -85,16 +95,16 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 	}
 	defer ws.Close()
 
-	game, gameExists := games[roomID]
+	game, gameExists := games[roomUUID]
 	if !gameExists {
-		log.Printf("Game not found: %s", roomID)
+		log.Printf("Game not found: %s", roomUUID)
 		return
 	}
 
 	// Check if the user already exists in the game's players
 	for _, player := range game.Players {
-		if player.ID == userID {
-			log.Printf("User %d already exists in the game, replacing WebSocket connection", userID)
+		if player.UUID == userUUID {
+			log.Printf("User %s already exists in the game, replacing WebSocket connection", userUUID)
 			player.ws = ws
 		}
 	}
@@ -107,6 +117,6 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 
-		handleMessage(msg, game, userID, ws)
+		handleMessage(msg, game, userUUID, ws)
 	}
 }

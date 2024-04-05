@@ -20,11 +20,11 @@ func main() {
 
 	log.Println("Setting up routes...")
 	r := mux.NewRouter()
-	r.HandleFunc("/ws/{roomID}/{userID}", enableCors(handleConnections))
+	r.HandleFunc("/ws/{roomUUID}/{userUUID}", enableCors(handleConnections))
 	r.HandleFunc("/createRoom", enableCors(createRoom(database)))
 	r.HandleFunc("/joinRoom", enableCors(joinRoom(database)))
 	r.HandleFunc("/leaveRoom", enableCors(leaveRoom(database)))
-	r.HandleFunc("/vote", enableCors(vote(database)))
+	// r.HandleFunc("/vote", enableCors(vote(database)))
 	r.HandleFunc("/showCards", enableCors(showCards(database)))
 	r.HandleFunc("/autoShowCards", enableCors(autoShowCards(database)))
 	r.HandleFunc("/resetVotes", enableCors(resetVotes(database)))

@@ -5,20 +5,20 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"strconv"
 )
 
 func changeName(database *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			UserID int    `json:"userID"`
-			RoomID int    `json:"roomID"`
-			Name   string `json:"name"`
+			UserUUID string `json:"userUUID"`
+			RoomUUID string `json:"roomUUID"`
+			Name     string `json:"name"`
 		}
+		json.NewDecoder(r.Body).Decode(&req)
 
-		err := json.NewDecoder(r.Body).Decode(&req)
+		UserID, err := getUserIDFromUUID(database, req.UserUUID)
 		if err != nil {
-			log.Printf("Error decoding JSON: %v", err)
+			log.Printf("Error getting user ID: %v", err)
 			return
 		}
 
@@ -28,23 +28,21 @@ func changeName(database *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		_, err = statement.Exec(req.Name, req.UserID)
+		_, err = statement.Exec(req.Name, UserID)
 		if err != nil {
 			log.Printf("Error executing statement: %v", err)
 			return
 		}
 
-		game, exists := games[strconv.Itoa(req.RoomID)]
+		game, exists := games[req.RoomUUID]
 		if exists {
 			for i := range game.Players {
-				if game.Players[i].ID == req.UserID {
+				if game.Players[i].ID == int(UserID) {
 					game.Players[i].Name = req.Name
 					break
 				}
 			}
 			sendGameState(game)
 		}
-
-		log.Printf("User %d changed their name to %s", req.UserID, req.Name)
 	}
 }
