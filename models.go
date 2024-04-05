@@ -19,4 +19,5 @@ type Game struct {
 	showCards     bool
 	autoShowCards bool
 	roomID        int
+	roomUUID      string
 }

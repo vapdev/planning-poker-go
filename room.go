@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strconv"
 
 	"github.com/google/uuid"
 )
@@ -63,8 +62,11 @@ func leaveRoom(database *sql.DB) http.HandlerFunc {
 		}
 
 		log.Printf("Params: %v", params)
-		roomID, roomExists := params["roomID"].(float64)
-		userID, userExists := params["userID"].(float64)
+		roomUUID, roomExists := params["roomUUID"].(string)
+		userUUID, userExists := params["userUUID"].(string)
+
+		roomID, _ := getRoomIDFromUUID(database, roomUUID)
+		userID, _ := getUserIDFromUUID(database, userUUID)
 
 		if !roomExists || !userExists {
 			http.Error(w, "Room ID or User ID not provided", http.StatusBadRequest)
@@ -95,7 +97,7 @@ func leaveRoom(database *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		game, gameExists := games[strconv.Itoa(int(roomID))]
+		game, gameExists := games[roomUUID]
 		if gameExists {
 			sendPlayerLeftMessage(game, int(userID))
 		}
@@ -129,24 +131,29 @@ func joinRoom(database *sql.DB) http.HandlerFunc {
 func resetVotes(database *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			RoomID int `json:"roomID"`
+			RoomUUID string `json:"roomUUID"`
 		}
 
 		if err := json.NewDecoder(r.Body).Decode(&req); handleError(w, err) {
 			return
 		}
 
-		_, err := database.Exec("DELETE FROM votes WHERE room_id = ?", req.RoomID)
+		roomID, err := getRoomIDFromUUID(database, req.RoomUUID)
 		if handleError(w, err) {
 			return
 		}
 
-		_, err = database.Exec("UPDATE rooms SET showCards = 0 WHERE id = ?", req.RoomID)
+		_, err = database.Exec("DELETE FROM votes WHERE room_id = ?", roomID)
 		if handleError(w, err) {
 			return
 		}
 
-		game, exists := games[strconv.Itoa(req.RoomID)]
+		_, err = database.Exec("UPDATE rooms SET showCards = 0 WHERE id = ?", roomID)
+		if handleError(w, err) {
+			return
+		}
+
+		game, exists := games[req.RoomUUID]
 		if exists {
 			game.showCards = false
 			for _, player := range game.Players {
@@ -160,32 +167,40 @@ func resetVotes(database *sql.DB) http.HandlerFunc {
 
 func autoShowCards(database *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		log.Println("Auto show cards")
+
 		var req struct {
-			RoomID int `json:"roomID"`
+			RoomUUID string `json:"roomUUID"`
 		}
 
 		if err := json.NewDecoder(r.Body).Decode(&req); handleError(w, err) {
+			log.Println("Error decoding request body")
 			return
 		}
 
+		log.Println("uuid: ", req.RoomUUID)
+		RoomID, _ := getRoomIDFromUUID(database, req.RoomUUID)
+		log.Printf("Room ID: %d", RoomID)
+
 		var currentAutoShowState bool
-		err := database.QueryRow("SELECT autoShowCards FROM rooms WHERE id = ?", req.RoomID).Scan(&currentAutoShowState)
+		err := database.QueryRow("SELECT autoShowCards FROM rooms WHERE id = ?", RoomID).Scan(&currentAutoShowState)
 		if handleError(w, err) {
 			return
 		}
 
 		newAutoShowState := !currentAutoShowState
-		_, err = database.Exec("UPDATE rooms SET autoShowCards = ? WHERE id = ?", newAutoShowState, req.RoomID)
+		_, err = database.Exec("UPDATE rooms SET autoShowCards = ? WHERE id = ?", newAutoShowState, RoomID)
 		if handleError(w, err) {
 			return
 		}
+		log.Println("Auto show cards end")
 
-		game, exists := games[strconv.Itoa(req.RoomID)]
+		game, exists := games[req.RoomUUID]
 		if exists {
 			game.autoShowCards = newAutoShowState
 			if !newAutoShowState {
 				game.showCards = false
-				_, err = database.Exec("UPDATE rooms SET showCards = ? WHERE id = ?", false, req.RoomID)
+				_, err = database.Exec("UPDATE rooms SET showCards = ? WHERE id = ?", false, RoomID)
 				if handleError(w, err) {
 					return
 				}
@@ -198,26 +213,34 @@ func autoShowCards(database *sql.DB) http.HandlerFunc {
 func showCards(database *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			RoomID int `json:"roomID"`
+			RoomUUID string `json:"roomUUID"`
 		}
 
 		if err := json.NewDecoder(r.Body).Decode(&req); handleError(w, err) {
 			return
 		}
 
+		RoomID, err := getRoomIDFromUUID(database, req.RoomUUID)
+		log.Printf("Room ID: %d", RoomID)
+		log.Printf("Room UUID: %s", req.RoomUUID)
+		if err != nil {
+			http.Error(w, "Failed to get room ID from UUID", http.StatusInternalServerError)
+			return
+		}
+
 		var currentShowState bool
-		err := database.QueryRow("SELECT showCards FROM rooms WHERE id = ?", req.RoomID).Scan(&currentShowState)
+		err = database.QueryRow("SELECT showCards FROM rooms WHERE id = ?", RoomID).Scan(&currentShowState)
 		if handleError(w, err) {
 			return
 		}
 
 		newShowState := !currentShowState
-		_, err = database.Exec("UPDATE rooms SET showCards = ? WHERE id = ?", newShowState, req.RoomID)
+		_, err = database.Exec("UPDATE rooms SET showCards = ? WHERE id = ?", newShowState, RoomID)
 		if handleError(w, err) {
 			return
 		}
 
-		game, exists := games[strconv.Itoa(req.RoomID)]
+		game, exists := games[req.RoomUUID]
 		if exists {
 			game.showCards = newShowState
 			sendGameState(game)
@@ -330,7 +353,7 @@ func createRoomInDB(database *sql.DB, userUUID string) (string, string, error) {
 	return roomUUID, userUUID, nil
 }
 
-func addUserToRoom(database *sql.DB, userUUID string, roomUUID string) (string, string, error) {
+func addUserToRoom(database *sql.DB, roomUUID string, userUUID string) (string, string, error) {
 	var userID int64
 	var err error
 	if userUUID == "" {
@@ -399,7 +422,7 @@ func castVote(database *sql.DB, roomID, userID, vote int) error {
 		// Existing vote
 		if existingVote == vote {
 			// Same vote, remove it
-			statement, err := database.Prepare("DELETE FROM votes WHERE room_idPrepare = ? AND user_id = ?")
+			statement, err := database.Prepare("DELETE FROM votes WHERE room_id = ? AND user_id = ?")
 			if err != nil {
 				return err
 			}

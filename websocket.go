@@ -33,9 +33,9 @@ func handleMessage(msg map[string]interface{}, game *Game, userUUID string, ws *
 	case "vote":
 		handleVote(msg, game, int(userID))
 	case "newPlayer":
-		handleNewPlayer(msg, game, int(userID), ws)
+		handleNewPlayer(msg, game, int(userID), userUUID, ws)
 	case "newAdmin":
-		handleNewAdmin(msg, game, int(userID), ws)
+		handleNewAdmin(msg, game, int(userID), userUUID, ws)
 	case "playerLeft":
 		handleLeaveRoom(game, int(userID))
 	}
@@ -62,7 +62,7 @@ func sendGameState(game *Game) {
 			"players":       game.Players,
 			"showCards":     game.showCards,
 			"autoShowCards": game.autoShowCards,
-			"roomID":        game.roomID,
+			"roomUUID":      game.roomUUID,
 			"admin":         game.admin,
 		}
 		if player.ws != nil {
@@ -78,10 +78,10 @@ func sendGameState(game *Game) {
 func handleConnections(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
 	roomUUID, roomExists := params["roomUUID"]
-	userUUIDStr, userExists := params["userUUID"]
+	userUUID, userExists := params["userUUID"]
 
 	log.Println("roomUUID: ", roomUUID)
-	log.Println("userUUIDStr: ", userUUIDStr)
+	log.Println("userUUID: ", userUUID)
 
 	if !roomExists || !userExists {
 		log.Println("Room ID or User UUID not provided")
@@ -103,8 +103,8 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 
 	// Check if the user already exists in the game's players
 	for _, player := range game.Players {
-		if player.UUID == userUUIDStr {
-			log.Printf("User %s already exists in the game, replacing WebSocket connection", userUUIDStr)
+		if player.UUID == userUUID {
+			log.Printf("User %s already exists in the game, replacing WebSocket connection", userUUID)
 			player.ws = ws
 		}
 	}
@@ -117,6 +117,6 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 
-		handleMessage(msg, game, userUUIDStr, ws)
+		handleMessage(msg, game, userUUID, ws)
 	}
 }

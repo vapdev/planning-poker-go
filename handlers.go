@@ -29,6 +29,7 @@ func handleLeaveRoom(game *Game, userID int) {
 }
 
 func handleVote(msg map[string]interface{}, game *Game, userID int) {
+	log.Printf("Handling vote: %v", msg)
 	vote, ok := msg["vote"].(float64)
 	if !ok {
 		log.Printf("vote is not a float64: %v", msg["vote"])
@@ -36,6 +37,10 @@ func handleVote(msg map[string]interface{}, game *Game, userID int) {
 	}
 
 	voteInt := int(vote)
+
+	// get db
+	db := getDB()
+	castVote(db, game.roomID, userID, voteInt)
 
 	for _, player := range game.Players {
 		if player.ID == userID {
@@ -51,7 +56,7 @@ func handleVote(msg map[string]interface{}, game *Game, userID int) {
 	}
 }
 
-func handleNewPlayer(msg map[string]interface{}, game *Game, userID int, ws *websocket.Conn) {
+func handleNewPlayer(msg map[string]interface{}, game *Game, userID int, userUUID string, ws *websocket.Conn) {
 	name, ok := msg["name"].(string)
 	if !ok {
 		log.Printf("name is not a string: %v", msg["name"])
@@ -73,6 +78,7 @@ func handleNewPlayer(msg map[string]interface{}, game *Game, userID int, ws *web
 
 	player := &Player{
 		ID:    userID,
+		UUID:  userUUID,
 		Name:  name,
 		Score: 0,
 		Voted: false,
@@ -82,7 +88,7 @@ func handleNewPlayer(msg map[string]interface{}, game *Game, userID int, ws *web
 	game.Players = append(game.Players, player)
 }
 
-func handleNewAdmin(msg map[string]interface{}, game *Game, userID int, ws *websocket.Conn) {
+func handleNewAdmin(msg map[string]interface{}, game *Game, userID int, userUUID string, ws *websocket.Conn) {
 	name, ok := msg["name"].(string)
 	if !ok {
 		log.Printf("name is not a string: %v", msg["name"])
@@ -91,6 +97,7 @@ func handleNewAdmin(msg map[string]interface{}, game *Game, userID int, ws *webs
 
 	player := &Player{
 		ID:    userID,
+		UUID:  userUUID,
 		Name:  name,
 		Score: 0,
 		Voted: false,
