@@ -279,7 +279,11 @@ func createRoomInDB(database *sql.DB, userUUID string) (string, string, error) {
 		return "", "", err
 	}
 
-	roomUUID := generateUuid()
+	roomUUID, err := generateNomeSala(database)
+	if err != nil {
+		log.Printf("Error generating room UUID: %v", err)
+		return "", "", err
+	}
 
 	if userUUID == "" {
 		userUUID = generateUuid()
