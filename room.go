@@ -12,11 +12,14 @@ import (
 
 type RoomRequest struct {
 	UserUUID string `json:"userUUID"`
+	RoomName string `json:"roomName"`
+	UserName string `json:"userName"`
 }
 
 type JoinRoomRequest struct {
 	UserUUID string `json:"UserUUID"`
 	RoomUUID string `json:"RoomUUID"`
+	UserName string `json:"UserName"`
 }
 
 func createRoom(database *sql.DB) http.HandlerFunc {
@@ -26,7 +29,7 @@ func createRoom(database *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		roomUUID, userUUID, err := createRoomInDB(database, req.UserUUID)
+		roomUUID, userUUID, roomName, err := createRoomInDB(database, req.UserUUID, req.RoomName, req.UserName)
 		if handleError(w, err) {
 			return
 		}
@@ -38,11 +41,13 @@ func createRoom(database *sql.DB) http.HandlerFunc {
 			Players: []*Player{},
 			admin:   int(userID),
 			roomID:  roomID,
+			name:    roomName,
 		}
 
 		sendResponse(w, map[string]interface{}{
 			"roomUUID": roomUUID,
 			"userUUID": userUUID,
+			"roomName": roomName,
 		})
 	}
 }
@@ -111,7 +116,7 @@ func joinRoom(database *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		roomUUID, userUUID, err := addUserToRoom(database, req.RoomUUID, req.UserUUID)
+		roomUUID, userUUID, err := addUserToRoom(database, req.RoomUUID, req.UserUUID, req.UserName)
 
 		if handleError(w, err) {
 			return
@@ -272,17 +277,20 @@ func generateUuid() string {
 	return uuid.New().String()
 }
 
-func createRoomInDB(database *sql.DB, userUUID string) (string, string, error) {
+func createRoomInDB(database *sql.DB, userUUID string, roomName string, userName string) (string, string, string, error) {
+	log.Printf("Creating room with name %s", roomName)
+	log.Printf("User UUID: %s", userUUID)
+	log.Printf("User name: %s", userName)
 	tx, err := database.Begin()
 	if err != nil {
 		log.Printf("Error starting transaction: %v", err)
-		return "", "", err
+		return "", "", "", err
 	}
 
-	roomUUID, err := generateNomeSala(database)
+	roomUUID, err := generateRoomUUID(database)
 	if err != nil {
 		log.Printf("Error generating room UUID: %v", err)
-		return "", "", err
+		return "", "", "", err
 	}
 
 	if userUUID == "" {
@@ -296,7 +304,7 @@ func createRoomInDB(database *sql.DB, userUUID string) (string, string, error) {
 			userUUID = generateUuid()
 		} else {
 			log.Printf("Error getting user ID from UUID: %v", err)
-			return "", "", err
+			return "", "", "", err
 		}
 	}
 
@@ -305,64 +313,35 @@ func createRoomInDB(database *sql.DB, userUUID string) (string, string, error) {
 	log.Printf("User count: %d", count)
 	if err != nil {
 		log.Printf("Error querying user count: %v", err)
-		return "", "", err
+		return "", "", "", err
 	}
 	if count == 0 {
-		res, err := tx.Exec("INSERT INTO users (name, uuid) VALUES ('Admin', ?)", userUUID)
+		res, err := tx.Exec("INSERT INTO users (name, uuid) VALUES (?, ?)", userName, userUUID)
 		if err != nil {
 			log.Printf("Error inserting user: %v", err)
-			return "", "", err
+			return "", "", "", err
 		}
 		userID, err = res.LastInsertId()
 		if err != nil {
 			log.Printf("Error inserting user: %v", err)
-			return "", "", err
+			return "", "", "", err
 		}
 	}
-
-	statement, err := tx.Prepare("INSERT INTO rooms (uuid, admin) VALUES (?, ?)")
-	if err != nil {
-		log.Printf("Error preparing room insert statement: %v", err)
-		return "", "", err
-	}
-	res, err := statement.Exec(roomUUID, userID)
-	if err != nil {
-		log.Printf("Error executing room insert statement: %v", err)
-		return "", "", err
-	}
-
-	roomID, err := res.LastInsertId()
-	if err != nil {
-		log.Printf("Error getting last insert ID: %v", err)
-		return "", "", err
-	}
-
-	statement, err = tx.Prepare("INSERT INTO room_users (room_id, user_id) VALUES (?, ?)")
-	if err != nil {
-		log.Printf("Error preparing room_users insert statement: %v", err)
-		return "", "", err
-	}
-	_, err = statement.Exec(roomID, userID)
-	if err != nil {
-		log.Printf("Error executing room_users insert statement: %v", err)
-		return "", "", err
-	}
-
-	err = tx.Commit()
-	if err != nil {
-		log.Printf("Error committing transaction: %v", err)
-		return "", "", err
-	}
-
-	return roomUUID, userUUID, nil
+	statement, _ := tx.Prepare("INSERT INTO rooms (uuid, admin, name) VALUES (?, ?, ?)")
+	res, _ := statement.Exec(roomUUID, userID, roomName)
+	roomID, _ := res.LastInsertId()
+	statement, _ = tx.Prepare("INSERT INTO room_users (room_id, user_id) VALUES (?, ?)")
+	_, _ = statement.Exec(roomID, userID)
+	tx.Commit()
+	return roomUUID, userUUID, roomName, nil
 }
 
-func addUserToRoom(database *sql.DB, roomUUID string, userUUID string) (string, string, error) {
+func addUserToRoom(database *sql.DB, roomUUID string, userUUID string, userName string) (string, string, error) {
 	var userID int64
 	var err error
 	if userUUID == "" {
 		userUUID = generateUuid()
-		res, _ := database.Exec("INSERT INTO users (name, uuid) VALUES ('JoinUser', ?)", userUUID)
+		res, _ := database.Exec("INSERT INTO users (name, uuid) VALUES (?, ?)", userName, userUUID)
 		userID, err = res.LastInsertId()
 		if err != nil {
 			return "", "", err

@@ -15,6 +15,7 @@ type Player struct {
 
 type Game struct {
 	Players       []*Player
+	name          string
 	admin         int
 	showCards     bool
 	autoShowCards bool

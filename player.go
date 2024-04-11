@@ -33,16 +33,21 @@ func changeName(database *sql.DB) http.HandlerFunc {
 			log.Printf("Error executing statement: %v", err)
 			return
 		}
-
+		log.Printf("User %d changed name to %s", UserID, req.Name)
 		game, exists := games[req.RoomUUID]
+		log.Printf("%v", games)
+		log.Printf("players of game %v", game.Players)
+
 		if exists {
 			for i := range game.Players {
 				if game.Players[i].ID == int(UserID) {
+					log.Printf("Changing name of player %d to %s", game.Players[i].ID, req.Name)
 					game.Players[i].Name = req.Name
 					break
 				}
 			}
-			sendGameState(game)
+			log.Printf("Sending game state to room %s", req.RoomUUID)
 		}
+		sendGameState(game)
 	}
 }

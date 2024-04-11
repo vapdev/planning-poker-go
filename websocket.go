@@ -63,6 +63,7 @@ func sendGameState(game *Game) {
 			"showCards":     game.showCards,
 			"autoShowCards": game.autoShowCards,
 			"roomUUID":      game.roomUUID,
+			"name":          game.name,
 			"admin":         game.admin,
 		}
 		if player.ws != nil {
