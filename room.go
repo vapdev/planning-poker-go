@@ -13,13 +13,11 @@ import (
 type RoomRequest struct {
 	UserUUID string `json:"userUUID"`
 	RoomName string `json:"roomName"`
-	UserName string `json:"userName"`
 }
 
 type JoinRoomRequest struct {
 	UserUUID string `json:"UserUUID"`
 	RoomUUID string `json:"RoomUUID"`
-	UserName string `json:"UserName"`
 }
 
 func createRoom(database *sql.DB) http.HandlerFunc {
@@ -29,7 +27,7 @@ func createRoom(database *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		roomUUID, userUUID, roomName, err := createRoomInDB(database, req.UserUUID, req.RoomName, req.UserName)
+		roomUUID, userUUID, roomName, err := createRoomInDB(database, req.UserUUID, req.RoomName)
 		if handleError(w, err) {
 			return
 		}
@@ -43,6 +41,7 @@ func createRoom(database *sql.DB) http.HandlerFunc {
 			roomID:  roomID,
 			name:    roomName,
 		}
+		sendGameState(games[roomUUID])
 
 		sendResponse(w, map[string]interface{}{
 			"roomUUID": roomUUID,
@@ -116,7 +115,7 @@ func joinRoom(database *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		roomUUID, userUUID, err := addUserToRoom(database, req.RoomUUID, req.UserUUID, req.UserName)
+		roomUUID, userUUID, err := addUserToRoom(database, req.RoomUUID, req.UserUUID)
 
 		if handleError(w, err) {
 			return
@@ -277,10 +276,9 @@ func generateUuid() string {
 	return uuid.New().String()
 }
 
-func createRoomInDB(database *sql.DB, userUUID string, roomName string, userName string) (string, string, string, error) {
+func createRoomInDB(database *sql.DB, userUUID string, roomName string) (string, string, string, error) {
 	log.Printf("Creating room with name %s", roomName)
 	log.Printf("User UUID: %s", userUUID)
-	log.Printf("User name: %s", userName)
 	tx, err := database.Begin()
 	if err != nil {
 		log.Printf("Error starting transaction: %v", err)
@@ -316,7 +314,7 @@ func createRoomInDB(database *sql.DB, userUUID string, roomName string, userName
 		return "", "", "", err
 	}
 	if count == 0 {
-		res, err := tx.Exec("INSERT INTO users (name, uuid) VALUES (?, ?)", userName, userUUID)
+		res, err := tx.Exec("INSERT INTO users (name, uuid) VALUES ('Guest', ?)", userUUID)
 		if err != nil {
 			log.Printf("Error inserting user: %v", err)
 			return "", "", "", err
@@ -336,22 +334,31 @@ func createRoomInDB(database *sql.DB, userUUID string, roomName string, userName
 	return roomUUID, userUUID, roomName, nil
 }
 
-func addUserToRoom(database *sql.DB, roomUUID string, userUUID string, userName string) (string, string, error) {
+func addUserToRoom(database *sql.DB, roomUUID string, userUUID string) (string, string, error) {
 	var userID int64
 	var err error
-	if userUUID == "" {
+
+	// Try to get the user ID from the provided UUID.
+	if userUUID != "" {
+		userID, err = getUserIDFromUUID(database, userUUID)
+		if err != nil && err != sql.ErrNoRows {
+			// If there's an error other than sql.ErrNoRows, return it.
+			return "", "", err
+		}
+	}
+
+	// If no userUUID was provided, or no user was found for the provided UUID,
+	// generate a new UUID and create a new user.
+	if userUUID == "" || err == sql.ErrNoRows {
 		userUUID = generateUuid()
-		res, _ := database.Exec("INSERT INTO users (name, uuid) VALUES (?, ?)", userName, userUUID)
+		res, err := database.Exec("INSERT INTO users (name, uuid) VALUES ('Guest', ?)", userUUID)
+		if err != nil {
+			return "", "", err
+		}
 		userID, err = res.LastInsertId()
 		if err != nil {
 			return "", "", err
 		}
-	} else {
-		userID, err = getUserIDFromUUID(database, userUUID)
-		if err != nil {
-			return "", "", err
-		}
-
 	}
 
 	roomID, err := getRoomIDFromUUID(database, roomUUID)
@@ -363,7 +370,7 @@ func addUserToRoom(database *sql.DB, roomUUID string, userUUID string, userName 
 	var count int
 	err = database.QueryRow("SELECT COUNT(*) FROM room_users WHERE room_id = ? AND user_id = ?", roomID, userID).Scan(&count)
 	if err != nil {
-		return "", "0", err
+		return "", "", err
 	}
 	if count > 0 {
 		log.Printf("User %d is already in room %d", userID, roomID)
@@ -381,7 +388,6 @@ func addUserToRoom(database *sql.DB, roomUUID string, userUUID string, userName 
 
 	return roomUUID, userUUID, nil
 }
-
 func castVote(database *sql.DB, roomID, userID, vote int) error {
 	// Check if a vote from the user already exists
 	var existingVote int
