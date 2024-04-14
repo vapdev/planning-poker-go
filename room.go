@@ -125,6 +125,8 @@ func joinRoom(database *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		sendGameState(games[roomUUID])
+
 		sendResponse(w, map[string]interface{}{
 			"roomUUID": roomUUID,
 			"userUUID": userUUID,
