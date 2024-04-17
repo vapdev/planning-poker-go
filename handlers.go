@@ -44,12 +44,12 @@ func handleVote(msg map[string]interface{}, game *Game, userID int) {
 
 	for _, player := range game.Players {
 		if player.ID == userID {
-			if player.Voted && player.Vote == voteInt {
+			if player.Voted && player.Vote != nil && *player.Vote == voteInt {
 				player.Voted = false
-				player.Vote = 0
+				player.Vote = nil
 			} else {
 				player.Voted = true
-				player.Vote = voteInt
+				player.Vote = &voteInt
 			}
 			break
 		}

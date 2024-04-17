@@ -164,7 +164,7 @@ func resetVotes(database *sql.DB) http.HandlerFunc {
 			game.showCards = false
 			for _, player := range game.Players {
 				player.Voted = false
-				player.Vote = 0
+				player.Vote = nil // Set player.Vote to nil instead of 0
 			}
 			sendGameState(game)
 		}

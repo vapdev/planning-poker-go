@@ -8,7 +8,7 @@ type Player struct {
 	Name  string `json:"name"`
 	Score int    `json:"score"`
 	Voted bool   `json:"voted"`
-	Vote  int    `json:"vote"`
+	Vote  *int   `json:"vote"`
 	Admin bool   `json:"admin"`
 	ws    *websocket.Conn
 }
