@@ -58,11 +58,9 @@ func handleVote(msg map[string]interface{}, game *Game, userID int) {
 
 func handleNewPlayer(msg map[string]interface{}, game *Game, userID int, userUUID string, ws *websocket.Conn) {
 	name, ok := msg["name"].(string)
-	if !ok {
-		log.Printf("name is not a string: %v", msg["name"])
-		return
+	if !ok || name == "" {
+		name = ""
 	}
-
 	// Check if the user already exists in the game's players
 	for _, player := range game.Players {
 		if player.ID == userID {
@@ -90,9 +88,8 @@ func handleNewPlayer(msg map[string]interface{}, game *Game, userID int, userUUI
 
 func handleNewAdmin(msg map[string]interface{}, game *Game, userID int, userUUID string, ws *websocket.Conn) {
 	name, ok := msg["name"].(string)
-	if !ok {
-		log.Printf("name is not a string: %v", msg["name"])
-		return
+	if !ok || name == "" {
+		name = ""
 	}
 
 	player := &Player{
