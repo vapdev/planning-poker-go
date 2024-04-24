@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
@@ -95,6 +96,23 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer ws.Close()
+
+	// Set a pong handler to detect connection health
+	ws.SetPongHandler(func(appData string) error {
+		log.Println("Received pong")
+		return nil // Nothing to do, just acknowledge pong
+	})
+
+	go func() {
+		ticker := time.NewTicker(10 * time.Second) // Ping every 10 seconds
+		defer ticker.Stop()
+		for range ticker.C {
+			if err := ws.WriteMessage(websocket.PingMessage, nil); err != nil {
+				log.Println("Error sending ping:", err)
+				return
+			}
+		}
+	}()
 
 	game, gameExists := games[roomUUID]
 	if !gameExists {
