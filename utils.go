@@ -40,7 +40,7 @@ func sendResponse(w http.ResponseWriter, data map[string]interface{}) {
 
 func getUserIDFromUUID(db *sql.DB, uuid string) (int64, error) {
 	var id int64
-	err := db.QueryRow("SELECT id FROM users WHERE uuid = ?", uuid).Scan(&id)
+	err := db.QueryRow("SELECT id FROM users WHERE uuid = $1", uuid).Scan(&id)
 	if err != nil {
 		return 0, err
 	}
@@ -49,7 +49,7 @@ func getUserIDFromUUID(db *sql.DB, uuid string) (int64, error) {
 
 func getRoomIDFromUUID(db *sql.DB, uuid string) (int, error) {
 	var id int
-	err := db.QueryRow("SELECT id FROM rooms WHERE uuid = ?", uuid).Scan(&id)
+	err := db.QueryRow("SELECT id FROM rooms WHERE uuid = $1", uuid).Scan(&id)
 	if err != nil {
 		return 0, err
 	}

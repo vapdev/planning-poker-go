@@ -79,7 +79,7 @@ func leaveRoom(database *sql.DB) http.HandlerFunc {
 
 		// Check if the user is the admin
 		var adminID int
-		err = database.QueryRow("SELECT admin FROM rooms WHERE id = ?", int(roomID)).Scan(&adminID)
+		err = database.QueryRow("SELECT admin FROM rooms WHERE id = $1", int(roomID)).Scan(&adminID)
 		if err != nil {
 			http.Error(w, "Failed to retrieve admin from database", http.StatusInternalServerError)
 			return
@@ -87,7 +87,7 @@ func leaveRoom(database *sql.DB) http.HandlerFunc {
 
 		if adminID == int(userID) {
 			// If the user is the admin, set another player as the admin
-			_, err = database.Exec("UPDATE rooms SET admin = (SELECT user_id FROM room_users WHERE room_id = ? LIMIT 1) WHERE id = ?", int(roomID), int(roomID))
+			_, err = database.Exec("UPDATE rooms SET admin = (SELECT user_id FROM room_users WHERE room_id = $1 LIMIT 1) WHERE id = $2", int(roomID), int(roomID))
 			if err != nil {
 				http.Error(w, "Failed to update admin in database", http.StatusInternalServerError)
 				return
@@ -95,7 +95,7 @@ func leaveRoom(database *sql.DB) http.HandlerFunc {
 		}
 
 		// Delete the record from the database
-		_, err = database.Exec("DELETE FROM room_users WHERE room_id = ? AND user_id = ?", int(roomID), int(userID))
+		_, err = database.Exec("DELETE FROM room_users WHERE room_id = $1 AND user_id = $2", int(roomID), int(userID))
 		if err != nil {
 			http.Error(w, "Failed to delete record from database", http.StatusInternalServerError)
 			return
@@ -149,12 +149,12 @@ func resetVotes(database *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		_, err = database.Exec("DELETE FROM votes WHERE room_id = ?", roomID)
+		_, err = database.Exec("DELETE FROM votes WHERE room_id = $1", roomID)
 		if handleError(w, err) {
 			return
 		}
 
-		_, err = database.Exec("UPDATE rooms SET showCards = 0 WHERE id = ?", roomID)
+		_, err = database.Exec("UPDATE rooms SET showCards = false WHERE id = $1", roomID)
 		if handleError(w, err) {
 			return
 		}
@@ -189,13 +189,13 @@ func autoShowCards(database *sql.DB) http.HandlerFunc {
 		log.Printf("Room ID: %d", RoomID)
 
 		var currentAutoShowState bool
-		err := database.QueryRow("SELECT autoShowCards FROM rooms WHERE id = ?", RoomID).Scan(&currentAutoShowState)
+		err := database.QueryRow("SELECT autoShowCards FROM rooms WHERE id = $1", RoomID).Scan(&currentAutoShowState)
 		if handleError(w, err) {
 			return
 		}
 
 		newAutoShowState := !currentAutoShowState
-		_, err = database.Exec("UPDATE rooms SET autoShowCards = ? WHERE id = ?", newAutoShowState, RoomID)
+		_, err = database.Exec("UPDATE rooms SET autoShowCards = $1 WHERE id = $2", newAutoShowState, RoomID)
 		if handleError(w, err) {
 			return
 		}
@@ -206,7 +206,7 @@ func autoShowCards(database *sql.DB) http.HandlerFunc {
 			game.autoShowCards = newAutoShowState
 			if !newAutoShowState {
 				game.showCards = false
-				_, err = database.Exec("UPDATE rooms SET showCards = ? WHERE id = ?", false, RoomID)
+				_, err = database.Exec("UPDATE rooms SET showCards = $1 WHERE id = $2", false, RoomID)
 				if handleError(w, err) {
 					return
 				}
@@ -235,13 +235,13 @@ func showCards(database *sql.DB) http.HandlerFunc {
 		}
 
 		var currentShowState bool
-		err = database.QueryRow("SELECT showCards FROM rooms WHERE id = ?", RoomID).Scan(&currentShowState)
+		err = database.QueryRow("SELECT showCards FROM rooms WHERE id = $1", RoomID).Scan(&currentShowState)
 		if handleError(w, err) {
 			return
 		}
 
 		newShowState := !currentShowState
-		_, err = database.Exec("UPDATE rooms SET showCards = ? WHERE id = ?", newShowState, RoomID)
+		_, err = database.Exec("UPDATE rooms SET showCards = $1 WHERE id = $2", newShowState, RoomID)
 		if handleError(w, err) {
 			return
 		}
@@ -302,37 +302,38 @@ func createRoomInDB(database *sql.DB, userUUID string, roomName string) (string,
 		if err == sql.ErrNoRows {
 			log.Printf("No user found with UUID %s, generating new UUID", userUUID)
 			userUUID = generateUuid()
+			row := tx.QueryRow("INSERT INTO users (name, uuid) VALUES ('Guest', $1) RETURNING id", userUUID)
+			err = row.Scan(&userID)
+			if err != nil {
+				log.Printf("Error inserting user: %v", err)
+				return "", "", "", err
+			}
 		} else {
 			log.Printf("Error getting user ID from UUID: %v", err)
 			return "", "", "", err
 		}
 	}
 
-	var count int
-	err = tx.QueryRow("SELECT COUNT(*) FROM users WHERE id = ?", userID).Scan(&count)
-	log.Printf("User count: %d", count)
+	var roomID int64
+	statement := `INSERT INTO rooms (uuid, admin, name) VALUES ($1, $2, $3) RETURNING id`
+	err = tx.QueryRow(statement, roomUUID, userID, roomName).Scan(&roomID)
 	if err != nil {
-		log.Printf("Error querying user count: %v", err)
+		log.Printf("Error inserting room: %v", err)
 		return "", "", "", err
 	}
-	if count == 0 {
-		res, err := tx.Exec("INSERT INTO users (name, uuid) VALUES ('Guest', ?)", userUUID)
-		if err != nil {
-			log.Printf("Error inserting user: %v", err)
-			return "", "", "", err
-		}
-		userID, err = res.LastInsertId()
-		if err != nil {
-			log.Printf("Error inserting user: %v", err)
-			return "", "", "", err
-		}
+
+	statement = "INSERT INTO room_users (room_id, user_id) VALUES ($1, $2)"
+	_, err = tx.Exec(statement, roomID, userID)
+	if err != nil {
+		log.Printf("Error inserting room_user: %v", err)
+		return "", "", "", err
 	}
-	statement, _ := tx.Prepare("INSERT INTO rooms (uuid, admin, name) VALUES (?, ?, ?)")
-	res, _ := statement.Exec(roomUUID, userID, roomName)
-	roomID, _ := res.LastInsertId()
-	statement, _ = tx.Prepare("INSERT INTO room_users (room_id, user_id) VALUES (?, ?)")
-	_, _ = statement.Exec(roomID, userID)
-	tx.Commit()
+
+	err = tx.Commit()
+	if err != nil {
+		log.Printf("Error committing transaction: %v", err)
+		return "", "", "", err
+	}
 	return roomUUID, userUUID, roomName, nil
 }
 
@@ -353,11 +354,8 @@ func addUserToRoom(database *sql.DB, roomUUID string, userUUID string) (string, 
 	// generate a new UUID and create a new user.
 	if userUUID == "" || err == sql.ErrNoRows {
 		userUUID = generateUuid()
-		res, err := database.Exec("INSERT INTO users (name, uuid) VALUES ('Guest', ?)", userUUID)
-		if err != nil {
-			return "", "", err
-		}
-		userID, err = res.LastInsertId()
+		var userID int64
+		err := database.QueryRow("INSERT INTO users (name, uuid) VALUES ('Guest', $1) RETURNING id", userUUID).Scan(&userID)
 		if err != nil {
 			return "", "", err
 		}
@@ -370,7 +368,7 @@ func addUserToRoom(database *sql.DB, roomUUID string, userUUID string) (string, 
 
 	// Check if user is already in the room
 	var count int
-	err = database.QueryRow("SELECT COUNT(*) FROM room_users WHERE room_id = ? AND user_id = ?", roomID, userID).Scan(&count)
+	err = database.QueryRow("SELECT COUNT(*) FROM room_users WHERE room_id = $1 AND user_id = $2", roomID, userID).Scan(&count)
 	if err != nil {
 		return "", "", err
 	}
@@ -379,7 +377,7 @@ func addUserToRoom(database *sql.DB, roomUUID string, userUUID string) (string, 
 		return roomUUID, userUUID, nil
 	}
 
-	statement, err := database.Prepare("INSERT INTO room_users (room_id, user_id) VALUES (?, ?)")
+	statement, err := database.Prepare("INSERT INTO room_users (room_id, user_id) VALUES ($1, $2)")
 	if err != nil {
 		return "", "", err
 	}
@@ -393,7 +391,7 @@ func addUserToRoom(database *sql.DB, roomUUID string, userUUID string) (string, 
 func castVote(database *sql.DB, roomID, userID, vote int) error {
 	// Check if a vote from the user already exists
 	var existingVote int
-	err := database.QueryRow("SELECT vote FROM votes WHERE room_id = ? AND user_id = ?", roomID, userID).Scan(&existingVote)
+	err := database.QueryRow("SELECT vote FROM votes WHERE room_id = $1 AND user_id = $2", roomID, userID).Scan(&existingVote)
 
 	if err != nil && err != sql.ErrNoRows {
 		return err
@@ -401,7 +399,7 @@ func castVote(database *sql.DB, roomID, userID, vote int) error {
 
 	if err == sql.ErrNoRows {
 		// No existing vote, insert new vote
-		statement, err := database.Prepare("INSERT INTO votes (room_id, user_id, vote) VALUES (?, ?, ?)")
+		statement, err := database.Prepare("INSERT INTO votes (room_id, user_id, vote) VALUES ($1, $2, $3)")
 		if err != nil {
 			return err
 		}
@@ -413,7 +411,7 @@ func castVote(database *sql.DB, roomID, userID, vote int) error {
 		// Existing vote
 		if existingVote == vote {
 			// Same vote, remove it
-			statement, err := database.Prepare("DELETE FROM votes WHERE room_id = ? AND user_id = ?")
+			statement, err := database.Prepare("DELETE FROM votes WHERE room_id = $1 AND user_id = $2")
 			if err != nil {
 				return err
 			}
@@ -423,7 +421,7 @@ func castVote(database *sql.DB, roomID, userID, vote int) error {
 			}
 		} else {
 			// Different vote, update it
-			statement, err := database.Prepare("UPDATE votes SET vote = ? WHERE room_id = ? AND user_id = ?")
+			statement, err := database.Prepare("UPDATE votes SET vote = $1 WHERE room_id = $2 AND user_id = $3")
 			if err != nil {
 				return err
 			}

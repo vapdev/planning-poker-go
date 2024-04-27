@@ -22,7 +22,7 @@ func changeName(database *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		statement, err := database.Prepare("UPDATE users SET name = ? WHERE id = ?")
+		statement, err := database.Prepare("UPDATE users SET name = $1 WHERE id = $2")
 		if err != nil {
 			log.Printf("Error preparing statement: %v", err)
 			return
