@@ -4,9 +4,32 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"os"
+
+	_ "github.com/jackc/pgx/v4/stdlib"
+	"github.com/joho/godotenv"
 )
 
+func setupDatabase() *sql.DB {
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+	database, err := sql.Open("pgx", os.Getenv("DATABASE_URL"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	createTables(database)
+	return database
+}
+
 func createTables(database *sql.DB) {
+	database, err := sql.Open("sqlite3", "planningpoker.db")
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	statements := []string{
 		"CREATE TABLE IF NOT EXISTS rooms (id INTEGER PRIMARY KEY, uuid TEXT, name TEXT, showCards BOOLEAN DEFAULT 0, autoShowCards BOOLEAN DEFAULT 0, admin INTEGER, FOREIGN KEY(admin) REFERENCES users(id))",
 		"CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT, uuid TEXT, guest BOOLEAN DEFAULT 1)",

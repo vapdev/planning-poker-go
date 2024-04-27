@@ -1,7 +1,6 @@
 package main
 
 import (
-	"database/sql"
 	"log"
 	"net/http"
 
@@ -12,11 +11,7 @@ import (
 var games = make(map[string]*Game)
 
 func main() {
-	database, err := sql.Open("sqlite3", "planningpoker.db")
-	if err != nil {
-		log.Fatal(err)
-	}
-	createTables(database)
+	database := setupDatabase()
 
 	log.Println("Setting up routes...")
 	r := mux.NewRouter()
