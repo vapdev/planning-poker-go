@@ -354,7 +354,6 @@ func addUserToRoom(database *sql.DB, roomUUID string, userUUID string) (string, 
 	// generate a new UUID and create a new user.
 	if userUUID == "" || err == sql.ErrNoRows {
 		userUUID = generateUuid()
-		var userID int64
 		err := database.QueryRow("INSERT INTO users (name, uuid) VALUES ('Guest', $1) RETURNING id", userUUID).Scan(&userID)
 		if err != nil {
 			return "", "", err

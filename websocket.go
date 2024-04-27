@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -17,7 +18,7 @@ var upgrader = websocket.Upgrader{
 }
 
 func getDB() *sql.DB {
-	db, err := sql.Open("sqlite3", "planningpoker.db")
+	db, err := sql.Open("pgx", os.Getenv("DATABASE_URL"))
 	if err != nil {
 		log.Fatal(err)
 	}
