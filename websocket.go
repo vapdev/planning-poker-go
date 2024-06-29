@@ -98,14 +98,13 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 	}
 	defer ws.Close()
 
-	// Set a pong handler to detect connection health
 	ws.SetPongHandler(func(appData string) error {
 		log.Println("Received pong")
-		return nil // Nothing to do, just acknowledge pong
+		return nil 
 	})
 
 	go func() {
-		ticker := time.NewTicker(10 * time.Second) // Ping every 10 seconds
+		ticker := time.NewTicker(10 * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
 			if err := ws.WriteMessage(websocket.PingMessage, nil); err != nil {

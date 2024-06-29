@@ -120,11 +120,6 @@ func joinRoom(database *sql.DB) http.HandlerFunc {
 		if handleError(w, err) {
 			return
 		}
-
-		if handleError(w, err) {
-			return
-		}
-
 		sendGameState(games[roomUUID])
 
 		sendResponse(w, map[string]interface{}{
