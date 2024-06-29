@@ -11,7 +11,12 @@ import (
 )
 
 func setupDatabase() *sql.DB {
-	err := godotenv.Load()
+	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
+	if err != nil {
+		log.Fatal(err)
+	}
+	envPath := filepath.Join(dir, ".env")
+	err := godotenv.Load(envPath)
 	if err != nil {
 		log.Fatal("Error loading .env file")
 	}
