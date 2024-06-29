@@ -25,6 +25,6 @@ func main() {
 	r.HandleFunc("/resetVotes", enableCors(resetVotes(database)))
 	r.HandleFunc("/changeName", enableCors(changeName(database)))
 
-	log.Println("Starting server on :8080")
-	log.Fatal(http.ListenAndServe(":8080", r))
+	log.Println("Starting server on " + os.Getenv("PORT"))
+	log.Fatal(http.ListenAndServe(":" + os.Getenv("PORT"), r))
 }
