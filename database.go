@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"filepath"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/joho/godotenv"
