@@ -5,21 +5,15 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/joho/godotenv"
 )
 
 func setupDatabase() *sql.DB {
-	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
+	err := godotenv.Load(".env")
 	if err != nil {
-		log.Fatal(err)
-	}
-	envPath := filepath.Join(dir, ".env")
-	err = godotenv.Load(envPath)
-	if err != nil {
-		log.Fatal("Error loading .env file")
+		log.Printf("Error loading .env file")
 	}
 	database, err := sql.Open("pgx", os.Getenv("DATABASE_URL"))
 	if err != nil {
