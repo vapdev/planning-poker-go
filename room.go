@@ -273,6 +273,66 @@ func generateUuid() string {
 	return uuid.New().String()
 }
 
+func changeRoomName(database *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			RoomUUID string `json:"roomUUID"`
+			RoomName string `json:"roomName"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); handleError(w, err) {
+			return
+		}
+
+		roomID, err := getRoomIDFromUUID(database, req.RoomUUID)
+		if handleError(w, err) {
+			return
+		}
+
+		_, err = database.Exec("UPDATE rooms SET name = $1 WHERE id = $2", req.RoomName, roomID)
+		if handleError(w, err) {
+			return
+		}
+
+		game, exists := games[req.RoomUUID]
+		if exists {
+			game.name = req.RoomName
+			sendGameState(game)
+		}
+	}
+}
+
+func kickPlayer(database *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			RoomUUID string `json:"roomUUID"`
+			UserUUID string `json:"userUUID"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); handleError(w, err) {
+			return
+		}
+
+		roomID, err := getRoomIDFromUUID(database, req.RoomUUID)
+		if handleError(w, err) {
+			return
+		}
+
+		userID, err := getUserIDFromUUID(database, req.UserUUID)
+		if handleError(w, err) {
+			return
+		}
+
+		_, err = database.Exec("DELETE FROM room_users WHERE room_id = $1 AND user_id = $2", roomID, userID)
+		if handleError(w, err) {
+			return
+		}
+
+		game, exists := games[req.RoomUUID]
+		if exists {
+			sendPlayerLeftMessage(game, int(userID))
+		}
+	}
+}
+
 func createRoomInDB(database *sql.DB, userUUID string, roomName string) (string, string, string, error) {
 	log.Printf("Creating room with name %s", roomName)
 	log.Printf("User UUID: %s", userUUID)

@@ -25,6 +25,8 @@ func main() {
 	r.HandleFunc("/autoShowCards", enableCors(autoShowCards(database)))
 	r.HandleFunc("/resetVotes", enableCors(resetVotes(database)))
 	r.HandleFunc("/changeName", enableCors(changeName(database)))
+	r.HandleFunc("/changeRoomName", enableCors(changeRoomName(database)))
+	r.HandleFunc("/kickPlayer", enableCors(kickPlayer(database)))
 
 	log.Println("Starting server on " + os.Getenv("PORT"))
 	log.Fatal(http.ListenAndServe(":" + os.Getenv("PORT"), r))

@@ -79,6 +79,7 @@ func sendGameState(game *Game) {
 }
 
 func handleConnections(w http.ResponseWriter, r *http.Request) {
+	log.Printf("Handling new player")
 	params := mux.Vars(r)
 	roomUUID, roomExists := params["roomUUID"]
 	userUUID, userExists := params["userUUID"]
@@ -91,28 +92,36 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ws, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Printf("WebSocket upgrade failed: %v", err)
-		return
-	}
-	defer ws.Close()
+    ws, err := upgrader.Upgrade(w, r, nil)
+    if err != nil {
+        log.Printf("WebSocket upgrade failed: %v", err)
+        return
+    }
+    defer ws.Close()
 
-	ws.SetPongHandler(func(appData string) error {
-		log.Println("Received pong")
-		return nil 
-	})
+    done := make(chan struct{})
+    defer close(done)
 
-	go func() {
-		ticker := time.NewTicker(10 * time.Second)
-		defer ticker.Stop()
-		for range ticker.C {
-			if err := ws.WriteMessage(websocket.PingMessage, nil); err != nil {
-				log.Println("Error sending ping:", err)
-				return
-			}
-		}
-	}()
+    ws.SetPongHandler(func(appData string) error {
+        log.Println("Received pong")
+        return nil 
+    })
+
+    go func() {
+        ticker := time.NewTicker(10 * time.Second)
+        defer ticker.Stop()
+        for {
+            select {
+            case <-done:
+                return
+            case <-ticker.C:
+                if err := ws.WriteMessage(websocket.PingMessage, nil); err != nil {
+                    log.Println("Error sending ping:", err)
+                    return
+                }
+            }
+        }
+    }()
 
 	game, gameExists := games[roomUUID]
 	if !gameExists {
