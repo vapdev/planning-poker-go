@@ -1,6 +1,7 @@
 package main
 
 import "github.com/gorilla/websocket"
+import "time"
 
 type Player struct {
 	ID    int    `json:"id"`
@@ -21,4 +22,5 @@ type Game struct {
 	autoShowCards bool
 	roomID        int
 	roomUUID      string
+	lastActive	  time.Time
 }

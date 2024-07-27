@@ -6,23 +6,31 @@ import (
 	"net/http"
 	"os"
 	"time"
+	"sync"
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 )
 
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin:     func(r *http.Request) bool { return true },
-}
+var (
+    upgrader = websocket.Upgrader{
+        ReadBufferSize:  1024,
+        WriteBufferSize: 1024,
+        CheckOrigin:     func(r *http.Request) bool { return true },
+    }
+	db *sql.DB
+    gamesMu  sync.Mutex               // Mutex to protect access to the games map
+)
 
 func getDB() *sql.DB {
-	db, err := sql.Open("pgx", os.Getenv("DATABASE_URL"))
-	if err != nil {
-		log.Fatal(err)
-	}
-	return db
+    if db == nil {
+        var err error
+        db, err = sql.Open("pgx", os.Getenv("DATABASE_URL"))
+        if err != nil {
+            log.Fatal(err)
+        }
+    }
+    return db
 }
 
 func handleMessage(msg map[string]interface{}, game *Game, userUUID string, ws *websocket.Conn) {
@@ -41,13 +49,31 @@ func handleMessage(msg map[string]interface{}, game *Game, userUUID string, ws *
 	case "playerLeft":
 		handleLeaveRoom(game, int(userID))
 	}
+	game.lastActive = time.Now()
 	sendGameState(game)
 }
 
 func sendGameState(game *Game) {
+	// Check if the game object is nil
+	if game == nil {
+		log.Println("Game object is nil, cannot send game state")
+		return
+	}
+
+	// Ensure the Players slice is initialized
+	if game.Players == nil {
+		log.Println("Players slice is nil, initializing to empty slice")
+		game.Players = []*Player{}
+	}
+
+	// Update showCards based on votes if autoShowCards is enabled
 	if game.autoShowCards {
 		allVoted := true
 		for _, player := range game.Players {
+			if player == nil {
+				log.Println("Player in Players slice is nil")
+				continue
+			}
 			if !player.Voted {
 				allVoted = false
 				break
@@ -58,34 +84,40 @@ func sendGameState(game *Game) {
 		}
 	}
 
+	// Prepare the message to send to players
+	msg := map[string]interface{}{
+		"type":          "gameState",
+		"players":       game.Players,
+		"showCards":     game.showCards,
+		"autoShowCards": game.autoShowCards,
+		"roomUUID":      game.roomUUID,
+		"name":          game.name,
+		"admin":         game.admin,
+	}
+
+	// Send the game state to each player
 	for _, player := range game.Players {
-		msg := map[string]interface{}{
-			"type":          "gameState",
-			"players":       game.Players,
-			"showCards":     game.showCards,
-			"autoShowCards": game.autoShowCards,
-			"roomUUID":      game.roomUUID,
-			"name":          game.name,
-			"admin":         game.admin,
+		if player == nil {
+			log.Println("Player is nil, skipping")
+			continue
 		}
-		if player.ws != nil {
-			err := player.ws.WriteJSON(msg)
-			if err != nil {
-				log.Printf("Error writing JSON to WebSocket: %v", err)
-				break
-			}
+		if player.ws == nil {
+			log.Printf("WebSocket connection for player %d is nil, skipping", player.ID)
+			continue
+		}
+
+		err := player.ws.WriteJSON(msg)
+		if err != nil {
+			log.Printf("Error writing JSON to WebSocket for player %d: %v", player.ID, err)
 		}
 	}
 }
 
 func handleConnections(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Handling new player")
 	params := mux.Vars(r)
 	roomUUID, roomExists := params["roomUUID"]
 	userUUID, userExists := params["userUUID"]
 
-	log.Println("roomUUID: ", roomUUID)
-	log.Println("userUUID: ", userUUID)
 
 	if !roomExists || !userExists {
 		log.Println("Room ID or User UUID not provided")
@@ -123,11 +155,19 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
         }
     }()
 
+	gamesMu.Lock()
 	game, gameExists := games[roomUUID]
 	if !gameExists {
-		log.Printf("Game not found: %s", roomUUID)
-		return
+		db := getDB()
+		game, err = fetchGameFromDB(db, roomUUID)
+		if err != nil {
+			log.Printf("Error fetching game from database: %v", err)
+			gamesMu.Unlock()
+			return
+		}
+		games[roomUUID] = game
 	}
+	gamesMu.Unlock()
 
 	// Check if the user already exists in the game's players
 	for _, player := range game.Players {

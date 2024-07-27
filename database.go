@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"time"
 	"os"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
@@ -23,6 +24,86 @@ func setupDatabase() *sql.DB {
 	return database
 }
 
+func fetchGameFromDB(db *sql.DB, roomUUID string) (*Game, error) {
+	query := `
+		SELECT 
+			r.id, r.uuid, r.name, r.showCards, r.autoShowCards, r.admin, r.lastActive
+		FROM 
+			rooms r
+		WHERE 
+			r.uuid = $1
+	`
+
+	var game Game
+	var lastActive sql.NullTime
+
+	err := db.QueryRow(query, roomUUID).Scan(
+		&game.roomID,
+		&game.roomUUID,
+		&game.name,
+		&game.showCards,
+		&game.autoShowCards,
+		&game.admin,
+		&lastActive,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error fetching game from DB: %v", err)
+	}
+
+	if lastActive.Valid {
+		game.lastActive = lastActive.Time
+	} else {
+		game.lastActive = time.Now() // Or set to a default time
+	}
+
+	players, err := fetchPlayersFromDB(db, game.roomID)
+	if err != nil {
+		return nil, fmt.Errorf("error fetching players from DB: %v", err)
+	}
+	game.Players = players
+
+	return &game, nil
+}
+
+func fetchPlayersFromDB(db *sql.DB, roomID int) ([]*Player, error) {
+	query := `
+		SELECT 
+			u.id, u.uuid, u.name
+		FROM 
+			users u
+		JOIN 
+			room_users ru ON u.id = ru.user_id
+		WHERE 
+			ru.room_id = $1
+	`
+
+	rows, err := db.Query(query, roomID)
+	if err != nil {
+		return nil, fmt.Errorf("error fetching players from DB: %v", err)
+	}
+	defer rows.Close()
+
+	var players []*Player
+	for rows.Next() {
+		var player Player
+		err := rows.Scan(
+			&player.ID,
+			&player.UUID,
+			&player.Name,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("error scanning player from DB: %v", err)
+		}
+		players = append(players, &player)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating players rows: %v", err)
+	}
+
+	return players, nil
+}
+
 func createTables(database *sql.DB) {
 	statements := []string{
 		`CREATE TABLE IF NOT EXISTS rooms (
@@ -31,26 +112,35 @@ func createTables(database *sql.DB) {
 			name TEXT, 
 			showCards BOOLEAN DEFAULT FALSE, 
 			autoShowCards BOOLEAN DEFAULT FALSE, 
-			admin INTEGER
+			admin INTEGER,
+			lastActive TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE TABLE IF NOT EXISTS users (
 			id SERIAL PRIMARY KEY, 
 			name TEXT, 
 			uuid UUID, 
-			guest BOOLEAN DEFAULT TRUE
+			guest BOOLEAN DEFAULT TRUE,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE TABLE IF NOT EXISTS room_users (
 			room_id INTEGER, 
 			user_id INTEGER, 
 			FOREIGN KEY(room_id) REFERENCES rooms(id), 
-			FOREIGN KEY(user_id) REFERENCES users(id)
+			FOREIGN KEY(user_id) REFERENCES users(id),
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE TABLE IF NOT EXISTS votes (
 			room_id INTEGER, 
 			user_id INTEGER, 
 			vote INTEGER, 
 			FOREIGN KEY(room_id) REFERENCES rooms(id), 
-			FOREIGN KEY(user_id) REFERENCES users(id)
+			FOREIGN KEY(user_id) REFERENCES users(id),
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE TABLE IF NOT EXISTS rounds (
 			id SERIAL PRIMARY KEY, 
@@ -59,7 +149,9 @@ func createTables(database *sql.DB) {
 			end_time TIMESTAMP, 
 			finished BOOLEAN DEFAULT FALSE, 
 			sequential INTEGER, 
-			FOREIGN KEY(room_id) REFERENCES rooms(id)
+			FOREIGN KEY(room_id) REFERENCES rooms(id),
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)`,
 	}
 
