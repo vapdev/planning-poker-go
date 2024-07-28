@@ -56,6 +56,37 @@ func handleVote(msg map[string]interface{}, game *Game, userID int) {
 	}
 }
 
+func handleEmoji(msg map[string]interface{}, game *Game, userID int) {
+	emoji, ok := msg["emoji"].(string)
+	if !ok {
+		log.Printf("emoji is not a string: %v", msg["emoji"])
+		return
+	}
+
+	targetUserIdFloat, ok := msg["targetUserId"].(float64)
+	if !ok {
+		log.Printf("targetUserId is not a float64: %v", msg["targetUserId"])
+		return
+	}
+	targetUserId := int(targetUserIdFloat)
+
+	originUserIdFloat, ok := msg["originUserId"].(float64)
+	if !ok {
+		log.Printf("originUserId is not a float64: %v", msg["originUserId"])
+		return
+	}
+	originUserId := int(originUserIdFloat)
+
+	emojiMessage := EmojiMessage{
+		Emoji:        emoji,
+		OriginUserID: originUserId,
+		TargetUserID: targetUserId,
+	}
+
+	// Send the game state with the emoji message
+	sendGameState(game, []EmojiMessage{emojiMessage})
+}
+
 func handleNewPlayer(msg map[string]interface{}, game *Game, userID int, userUUID string, ws *websocket.Conn) {
 	name, ok := msg["name"].(string)
 	if !ok || name == "" {

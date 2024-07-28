@@ -23,4 +23,11 @@ type Game struct {
 	roomID        int
 	roomUUID      string
 	lastActive	  time.Time
+	Emojis      []EmojiMessage
+}
+
+type EmojiMessage struct {
+	Emoji        string
+	OriginUserID int
+	TargetUserID int
 }

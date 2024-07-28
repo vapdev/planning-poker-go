@@ -42,18 +42,33 @@ func handleMessage(msg map[string]interface{}, game *Game, userUUID string, ws *
 	switch msg["type"] {
 	case "vote":
 		handleVote(msg, game, int(userID))
+		sendGameState(game, nil) // Enviar estado do jogo sem emojis
 	case "newPlayer":
 		handleNewPlayer(msg, game, int(userID), userUUID, ws)
+		sendGameState(game, nil) // Enviar estado do jogo sem emojis
 	case "newAdmin":
 		handleNewAdmin(msg, game, int(userID), userUUID, ws)
+		sendGameState(game, nil) // Enviar estado do jogo sem emojis
 	case "playerLeft":
 		handleLeaveRoom(game, int(userID))
+		sendGameState(game, nil) // Enviar estado do jogo sem emojis
+	case "emoji":
+		handleEmoji(msg, game, int(userID)) // A função `handleEmoji` já chama `sendGameState` com emojis
+	default:
+		sendGameState(game, nil) // Enviar estado do jogo sem emojis para outros tipos de mensagem
 	}
 	game.lastActive = time.Now()
-	sendGameState(game)
 }
 
-func sendGameState(game *Game) {
+func sendGameState(game *Game, emojis ...[]EmojiMessage) {
+	// Check if emojis is provided, if not default to nil
+	var emojiMessages []EmojiMessage
+	if len(emojis) > 0 {
+		emojiMessages = emojis[0]
+	} else {
+		emojiMessages = nil
+	}
+
 	// Check if the game object is nil
 	if game == nil {
 		log.Println("Game object is nil, cannot send game state")
@@ -93,6 +108,7 @@ func sendGameState(game *Game) {
 		"roomUUID":      game.roomUUID,
 		"name":          game.name,
 		"admin":         game.admin,
+		"emojis":        emojiMessages, // Include the emojis in the game state
 	}
 
 	// Send the game state to each player
@@ -112,6 +128,7 @@ func sendGameState(game *Game) {
 		}
 	}
 }
+
 
 func handleConnections(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
