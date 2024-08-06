@@ -9,9 +9,14 @@ type Player struct {
 	Name  string `json:"name"`
 	Score int    `json:"score"`
 	Voted bool   `json:"voted"`
-	Vote  *int   `json:"vote"`
+	Vote  *string   `json:"vote"`
 	Admin bool   `json:"admin"`
 	ws    *websocket.Conn
+}
+
+type CardOption struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
 }
 
 type Game struct {
@@ -24,6 +29,7 @@ type Game struct {
 	roomUUID      string
 	lastActive	  time.Time
 	Emojis      []EmojiMessage
+	deck        []CardOption
 }
 
 type EmojiMessage struct {

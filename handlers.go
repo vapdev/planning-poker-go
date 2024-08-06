@@ -29,31 +29,28 @@ func handleLeaveRoom(game *Game, userID int) {
 }
 
 func handleVote(msg map[string]interface{}, game *Game, userID int) {
-	log.Printf("Handling vote: %v", msg)
-	vote, ok := msg["vote"].(float64)
-	if !ok {
-		log.Printf("vote is not a float64: %v", msg["vote"])
-		return
-	}
+    vote, ok := msg["vote"].(string)
+    if !ok {
+        log.Println("Invalid vote format")
+        return
+    }
 
-	voteInt := int(vote)
+    // get db
+    db := getDB()
+    castVote(db, game.roomID, userID, vote)
 
-	// get db
-	db := getDB()
-	castVote(db, game.roomID, userID, voteInt)
-
-	for _, player := range game.Players {
-		if player.ID == userID {
-			if player.Voted && player.Vote != nil && *player.Vote == voteInt {
-				player.Voted = false
-				player.Vote = nil
-			} else {
-				player.Voted = true
-				player.Vote = &voteInt
-			}
-			break
-		}
-	}
+    for _, player := range game.Players {
+        if player.ID == userID {
+            if player.Voted && player.Vote != nil && *player.Vote == vote {
+                player.Voted = false
+                player.Vote = nil
+            } else {
+                player.Voted = true
+                player.Vote = &vote
+            }
+            break
+        }
+    }
 }
 
 func handleEmoji(msg map[string]interface{}, game *Game, userID int) {

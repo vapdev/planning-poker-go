@@ -109,9 +109,10 @@ func createTables(database *sql.DB) {
 		`CREATE TABLE IF NOT EXISTS rooms (
 			id SERIAL PRIMARY KEY, 
 			uuid UUID, 
-			name TEXT, 
+			name varchar(255), 
 			showCards BOOLEAN DEFAULT FALSE, 
 			autoShowCards BOOLEAN DEFAULT FALSE, 
+			deck TEXT,
 			admin INTEGER,
 			lastActive TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -119,7 +120,7 @@ func createTables(database *sql.DB) {
 		)`,
 		`CREATE TABLE IF NOT EXISTS users (
 			id SERIAL PRIMARY KEY, 
-			name TEXT, 
+			name varchar(255), 
 			uuid UUID, 
 			guest BOOLEAN DEFAULT TRUE,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -136,7 +137,7 @@ func createTables(database *sql.DB) {
 		`CREATE TABLE IF NOT EXISTS votes (
 			room_id INTEGER, 
 			user_id INTEGER, 
-			vote INTEGER, 
+			vote varchar(5), 
 			FOREIGN KEY(room_id) REFERENCES rooms(id), 
 			FOREIGN KEY(user_id) REFERENCES users(id),
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

@@ -61,74 +61,73 @@ func handleMessage(msg map[string]interface{}, game *Game, userUUID string, ws *
 }
 
 func sendGameState(game *Game, emojis ...[]EmojiMessage) {
-	// Check if emojis is provided, if not default to nil
-	var emojiMessages []EmojiMessage
-	if len(emojis) > 0 {
-		emojiMessages = emojis[0]
-	} else {
-		emojiMessages = nil
-	}
+    // Check if emojis is provided, if not default to nil
+    var emojiMessages []EmojiMessage
+    if len(emojis) > 0 {
+        emojiMessages = emojis[0]
+    } else {
+        emojiMessages = nil
+    }
 
-	// Check if the game object is nil
-	if game == nil {
-		log.Println("Game object is nil, cannot send game state")
-		return
-	}
+    // Check if the game object is nil
+    if game == nil {
+        log.Println("Game object is nil, cannot send game state")
+        return
+    }
+    // Ensure the Players slice is initialized
+    if game.Players == nil {
+        log.Println("Players slice is nil, initializing to empty slice")
+        game.Players = []*Player{}
+    }
 
-	// Ensure the Players slice is initialized
-	if game.Players == nil {
-		log.Println("Players slice is nil, initializing to empty slice")
-		game.Players = []*Player{}
-	}
+    // Update showCards based on votes if autoShowCards is enabled
+    if game.autoShowCards {
+        allVoted := len(game.Players) > 0
+        for _, player := range game.Players {
+            if player == nil {
+                log.Println("Player in Players slice is nil")
+                continue
+            }
+            if !player.Voted {
+                allVoted = false
+                break
+            }
+        }
+        if allVoted {
+            game.showCards = true
+        }
+    }
 
-	// Update showCards based on votes if autoShowCards is enabled
-	if game.autoShowCards {
-		allVoted := true
-		for _, player := range game.Players {
-			if player == nil {
-				log.Println("Player in Players slice is nil")
-				continue
-			}
-			if !player.Voted {
-				allVoted = false
-				break
-			}
-		}
-		if allVoted {
-			game.showCards = true
-		}
-	}
+    // Prepare the message to send to players
+    msg := map[string]interface{}{
+        "type":          "gameState",
+        "players":       game.Players,
+        "showCards":     game.showCards,
+        "autoShowCards": game.autoShowCards,
+        "roomUUID":      game.roomUUID,
+        "name":          game.name,
+        "admin":         game.admin,
+        "emojis":        emojiMessages, // Include the emojis in the game state
+        "deck":          game.deck,
+    }
 
-	// Prepare the message to send to players
-	msg := map[string]interface{}{
-		"type":          "gameState",
-		"players":       game.Players,
-		"showCards":     game.showCards,
-		"autoShowCards": game.autoShowCards,
-		"roomUUID":      game.roomUUID,
-		"name":          game.name,
-		"admin":         game.admin,
-		"emojis":        emojiMessages, // Include the emojis in the game state
-	}
+    // Send the game state to each player
+    for _, player := range game.Players {
+        if player == nil {
+            log.Println("Player is nil, skipping")
+            continue
+        }
+        if player.ws == nil {
+            log.Printf("WebSocket connection for player %d is nil, skipping", player.ID)
+            continue
+        }
 
-	// Send the game state to each player
-	for _, player := range game.Players {
-		if player == nil {
-			log.Println("Player is nil, skipping")
-			continue
-		}
-		if player.ws == nil {
-			log.Printf("WebSocket connection for player %d is nil, skipping", player.ID)
-			continue
-		}
-
-		err := player.ws.WriteJSON(msg)
-		if err != nil {
-			log.Printf("Error writing JSON to WebSocket for player %d: %v", player.ID, err)
-		}
-	}
+        err := player.ws.WriteJSON(msg)
+        if err != nil {
+            log.Printf("Error writing JSON to WebSocket for player %d: %v", player.ID, err)
+        }
+    }
 }
-
 
 func handleConnections(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
@@ -152,7 +151,6 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
     defer close(done)
 
     ws.SetPongHandler(func(appData string) error {
-        log.Println("Received pong")
         return nil 
     })
 

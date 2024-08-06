@@ -11,8 +11,10 @@ import (
 )
 
 type RoomRequest struct {
-	UserUUID string `json:"userUUID"`
-	RoomName string `json:"roomName"`
+	UserUUID      string       `json:"userUUID"`
+	RoomName      string       `json:"roomName"`
+	AutoShowCards bool         `json:"autoShowCards"`
+	Deck          []CardOption `json:"deck"`
 }
 
 type JoinRoomRequest struct {
@@ -27,7 +29,7 @@ func createRoom(database *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		roomUUID, userUUID, roomName, err := createRoomInDB(database, req.UserUUID, req.RoomName)
+		roomUUID, userUUID, roomName, autoShowCards, deck, err := createRoomInDB(database, req.UserUUID, req.RoomName, req.AutoShowCards, req.Deck)
 		if handleError(w, err) {
 			return
 		}
@@ -35,18 +37,26 @@ func createRoom(database *sql.DB) http.HandlerFunc {
 		userID, _ := getUserIDFromUUID(database, userUUID)
 		roomID, _ := getRoomIDFromUUID(database, roomUUID)
 
+		deckText := ""
+		for _, card := range deck {
+			deckText += fmt.Sprintf("%s, ", card.Value)
+		}
 		games[roomUUID] = &Game{
-			Players: []*Player{},
-			admin:   int(userID),
-			roomID:  roomID,
-			name:    roomName,
+			Players:       []*Player{},
+			admin:         int(userID),
+			roomID:        roomID,
+			name:          roomName,
+			autoShowCards: autoShowCards,
+			deck:          deck,
 		}
 		sendGameState(games[roomUUID])
 
 		sendResponse(w, map[string]interface{}{
-			"roomUUID": roomUUID,
-			"userUUID": userUUID,
-			"roomName": roomName,
+			"roomUUID":     roomUUID,
+			"userUUID":     userUUID,
+			"roomName":     roomName,
+			"autoShowCards": autoShowCards,
+			"deck":         deck,
 		})
 	}
 }
@@ -125,6 +135,7 @@ func joinRoom(database *sql.DB) http.HandlerFunc {
 		sendResponse(w, map[string]interface{}{
 			"roomUUID": roomUUID,
 			"userUUID": userUUID,
+			"deck":     games[roomUUID].deck,
 		})
 	}
 }
@@ -244,7 +255,7 @@ func vote(database *sql.DB) http.HandlerFunc {
 		var req struct {
 			UserID int `json:"userID"`
 			RoomID int `json:"roomID"`
-			Vote   int `json:"vote"`
+			Vote   string `json:"vote"`
 		}
 
 		if err := json.NewDecoder(r.Body).Decode(&req); handleError(w, err) {
@@ -254,8 +265,6 @@ func vote(database *sql.DB) http.HandlerFunc {
 		if err := castVote(database, req.RoomID, req.UserID, req.Vote); handleError(w, err) {
 			return
 		}
-
-		fmt.Fprintf(w, "User %d voted %d in room %d\n", req.UserID, req.Vote, req.RoomID)
 	}
 }
 
@@ -323,19 +332,17 @@ func kickPlayer(database *sql.DB) http.HandlerFunc {
 	}
 }
 
-func createRoomInDB(database *sql.DB, userUUID string, roomName string) (string, string, string, error) {
-	log.Printf("Creating room with name %s", roomName)
-	log.Printf("User UUID: %s", userUUID)
+func createRoomInDB(database *sql.DB, userUUID string, roomName string, autoShowCards bool, deck []CardOption) (string, string, string, bool, []CardOption, error) {
 	tx, err := database.Begin()
 	if err != nil {
 		log.Printf("Error starting transaction: %v", err)
-		return "", "", "", err
+		return "", "", "", false, nil, err
 	}
 
 	roomUUID, err := generateRoomUUID(database)
 	if err != nil {
 		log.Printf("Error generating room UUID: %v", err)
-		return "", "", "", err
+		return "", "", "", false, nil, err
 	}
 
 	if userUUID == "" {
@@ -351,35 +358,40 @@ func createRoomInDB(database *sql.DB, userUUID string, roomName string) (string,
 			err = row.Scan(&userID)
 			if err != nil {
 				log.Printf("Error inserting user: %v", err)
-				return "", "", "", err
+				return "", "", "", false, nil, err
 			}
 		} else {
 			log.Printf("Error getting user ID from UUID: %v", err)
-			return "", "", "", err
+			return "", "", "", false, nil, err
 		}
 	}
 
 	var roomID int64
-	statement := `INSERT INTO rooms (uuid, admin, name) VALUES ($1, $2, $3) RETURNING id`
-	err = tx.QueryRow(statement, roomUUID, userID, roomName).Scan(&roomID)
+	statement := `INSERT INTO rooms (uuid, admin, name, autoshowcards, deck) VALUES ($1, $2, $3, $4, $5) RETURNING id`
+	deckJSON, err := json.Marshal(deck)
+	if err != nil {
+		log.Printf("Error marshalling deck: %v", err)
+		return "", "", "", false, nil, err
+	}
+	err = tx.QueryRow(statement, roomUUID, userID, roomName, autoShowCards, deckJSON).Scan(&roomID)
 	if err != nil {
 		log.Printf("Error inserting room: %v", err)
-		return "", "", "", err
+		return "", "", "", false, nil, err
 	}
 
 	statement = "INSERT INTO room_users (room_id, user_id) VALUES ($1, $2)"
 	_, err = tx.Exec(statement, roomID, userID)
 	if err != nil {
 		log.Printf("Error inserting room_user: %v", err)
-		return "", "", "", err
+		return "", "", "", false, nil, err
 	}
 
 	err = tx.Commit()
 	if err != nil {
 		log.Printf("Error committing transaction: %v", err)
-		return "", "", "", err
+		return "", "", "", false, nil, err
 	}
-	return roomUUID, userUUID, roomName, nil
+	return roomUUID, userUUID, roomName, autoShowCards, deck, nil
 }
 
 func addUserToRoom(database *sql.DB, roomUUID string, userUUID string) (string, string, error) {
@@ -432,9 +444,9 @@ func addUserToRoom(database *sql.DB, roomUUID string, userUUID string) (string, 
 
 	return roomUUID, userUUID, nil
 }
-func castVote(database *sql.DB, roomID, userID, vote int) error {
+func castVote(database *sql.DB, roomID int, userID int, vote string) error {
 	// Check if a vote from the user already exists
-	var existingVote int
+	var existingVote string
 	err := database.QueryRow("SELECT vote FROM votes WHERE room_id = $1 AND user_id = $2", roomID, userID).Scan(&existingVote)
 
 	if err != nil && err != sql.ErrNoRows {
