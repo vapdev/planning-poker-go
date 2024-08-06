@@ -167,48 +167,38 @@ func resetVotes(database *sql.DB) http.HandlerFunc {
 }
 
 func autoShowCards(database *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		log.Println("Auto show cards")
+    return func(w http.ResponseWriter, r *http.Request) {
 
-		var req struct {
-			RoomUUID string `json:"roomUUID"`
-		}
+        var req struct {
+            RoomUUID      string `json:"roomUUID"`
+            AutoShowCards bool   `json:"autoShowCards"`
+        }
 
-		if err := json.NewDecoder(r.Body).Decode(&req); handleError(w, err) {
-			log.Println("Error decoding request body")
-			return
-		}
+        if err := json.NewDecoder(r.Body).Decode(&req); handleError(w, err) {
+            log.Println("Error decoding request body")
+            return
+        }
 
-		log.Println("uuid: ", req.RoomUUID)
-		RoomID, _ := getRoomIDFromUUID(database, req.RoomUUID)
-		log.Printf("Room ID: %d", RoomID)
+        RoomID, _ := getRoomIDFromUUID(database, req.RoomUUID)
 
-		var currentAutoShowState bool
-		err := database.QueryRow("SELECT autoShowCards FROM rooms WHERE id = $1", RoomID).Scan(&currentAutoShowState)
-		if handleError(w, err) {
-			return
-		}
+        _, err := database.Exec("UPDATE rooms SET autoShowCards = $1 WHERE id = $2", req.AutoShowCards, RoomID)
+        if handleError(w, err) {
+            return
+        }
 
-		newAutoShowState := !currentAutoShowState
-		_, err = database.Exec("UPDATE rooms SET autoShowCards = $1 WHERE id = $2", newAutoShowState, RoomID)
-		if handleError(w, err) {
-			return
-		}
-		log.Println("Auto show cards end")
-
-		game, exists := games[req.RoomUUID]
-		if exists {
-			game.autoShowCards = newAutoShowState
-			if !newAutoShowState {
-				game.showCards = false
-				_, err = database.Exec("UPDATE rooms SET showCards = $1 WHERE id = $2", false, RoomID)
-				if handleError(w, err) {
-					return
-				}
-			}
-			sendGameState(game)
-		}
-	}
+        game, exists := games[req.RoomUUID]
+        if exists {
+            game.autoShowCards = req.AutoShowCards
+            if !req.AutoShowCards {
+                game.showCards = false
+                _, err = database.Exec("UPDATE rooms SET showCards = $1 WHERE id = $2", false, RoomID)
+                if handleError(w, err) {
+                    return
+                }
+            }
+            sendGameState(game)
+        }
+    }
 }
 
 func showCards(database *sql.DB) http.HandlerFunc {
