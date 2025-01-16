@@ -13,7 +13,7 @@ type Palavra struct {
 	Genero string
 }
 
-func generateRoomUUID(db *sql.DB) (string, error) {
+func generateRoomUUID() (string, error) {
 	var uuidStr string
 	uuidStr = uuid.New().String()
 	return uuidStr, nil
@@ -38,8 +38,8 @@ func sendResponse(w http.ResponseWriter, data map[string]interface{}) {
 	w.Write(jsonData)
 }
 
-func getUserIDFromUUID(db *sql.DB, uuid string) (int64, error) {
-	var id int64
+func getUserIDFromUUID(db *sql.DB, uuid string) (int, error) {
+	var id int
 	err := db.QueryRow("SELECT id FROM users WHERE uuid = $1", uuid).Scan(&id)
 	if err != nil {
 		return 0, err
