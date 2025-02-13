@@ -11,7 +11,7 @@ type Player struct {
 	Voted bool   `json:"voted"`
 	Vote  *string   `json:"vote"`
 	Admin bool   `json:"admin"`
-	ws    *websocket.Conn
+	connections []*websocket.Conn
 }
 
 type CardOption struct {
