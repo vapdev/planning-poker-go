@@ -1,14 +1,35 @@
-ARG GO_VERSION=1
-FROM golang:${GO_VERSION}-bookworm as builder
+# Etapa de build
+FROM golang:1.22 AS builder
 
-WORKDIR /usr/src/app
+# Definir o diretório de trabalho dentro do contêiner
+WORKDIR /app
+
+# Copiar os arquivos go.mod e go.sum
 COPY go.mod go.sum ./
-RUN go mod download && go mod verify
+
+# Baixar as dependências
+RUN go mod download
+
+# Copiar o código-fonte para o contêiner
 COPY . .
-RUN go build -v -o /run-app .
 
+# Compilar a aplicação com CGO desabilitado para uma compilação estática
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o main .
 
-FROM debian:bookworm
+# Etapa final
+FROM alpine:latest
 
-COPY --from=builder /run-app /usr/local/bin/
-CMD ["run-app"]
+# Definir o diretório de trabalho dentro do contêiner
+WORKDIR /root/
+
+# Instalar o pacote ca-certificates se sua aplicação fizer requisições HTTPS
+RUN apk --no-cache add ca-certificates
+
+# Copiar o binário compilado da etapa de build
+COPY --from=builder /app/main .
+
+# Expor a porta que a aplicação utiliza (ajuste conforme necessário)
+EXPOSE 8080
+
+# Comando para executar a aplicação
+CMD ["./main"]
