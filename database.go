@@ -4,8 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"time"
 	"os"
+	"time"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/joho/godotenv"
@@ -143,14 +143,24 @@ func createTables(database *sql.DB) {
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)`,
-		`CREATE TABLE IF NOT EXISTS rounds (
-			id SERIAL PRIMARY KEY, 
-			room_id INTEGER, 
-			start_time TIMESTAMP, 
-			end_time TIMESTAMP, 
-			finished BOOLEAN DEFAULT FALSE, 
-			sequential INTEGER, 
+		`CREATE TABLE IF NOT EXISTS issues (
+			id SERIAL PRIMARY KEY,
+			room_id INTEGER,
+			uuid UUID,
+			title varchar(255),
+			description TEXT,
+			link TEXT,
+			sequence INTEGER,
 			FOREIGN KEY(room_id) REFERENCES rooms(id),
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS issue_votes (
+			issue_id INTEGER,
+			user_id INTEGER,
+			vote varchar(5),
+			FOREIGN KEY(issue_id) REFERENCES issues(id),
+			FOREIGN KEY(user_id) REFERENCES users(id),
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)`,

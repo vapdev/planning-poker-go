@@ -52,11 +52,11 @@ func createRoom(database *sql.DB) http.HandlerFunc {
 		sendGameState(games[roomUUID])
 
 		sendResponse(w, map[string]interface{}{
-			"roomUUID":     roomUUID,
-			"userUUID":     userUUID,
-			"roomName":     roomName,
+			"roomUUID":      roomUUID,
+			"userUUID":      userUUID,
+			"roomName":      roomName,
 			"autoShowCards": autoShowCards,
-			"deck":         deck,
+			"deck":          deck,
 		})
 	}
 }
@@ -178,38 +178,38 @@ func resetVotes(database *sql.DB) http.HandlerFunc {
 }
 
 func autoShowCards(database *sql.DB) http.HandlerFunc {
-    return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
 
-        var req struct {
-            RoomUUID      string `json:"roomUUID"`
-            AutoShowCards bool   `json:"autoShowCards"`
-        }
+		var req struct {
+			RoomUUID      string `json:"roomUUID"`
+			AutoShowCards bool   `json:"autoShowCards"`
+		}
 
-        if err := json.NewDecoder(r.Body).Decode(&req); handleError(w, err) {
-            log.Println("Error decoding request body")
-            return
-        }
+		if err := json.NewDecoder(r.Body).Decode(&req); handleError(w, err) {
+			log.Println("Error decoding request body")
+			return
+		}
 
-        RoomID, _ := getRoomIDFromUUID(database, req.RoomUUID)
+		RoomID, _ := getRoomIDFromUUID(database, req.RoomUUID)
 
-        _, err := database.Exec("UPDATE rooms SET autoShowCards = $1 WHERE id = $2", req.AutoShowCards, RoomID)
-        if handleError(w, err) {
-            return
-        }
+		_, err := database.Exec("UPDATE rooms SET autoShowCards = $1 WHERE id = $2", req.AutoShowCards, RoomID)
+		if handleError(w, err) {
+			return
+		}
 
-        game, exists := games[req.RoomUUID]
-        if exists {
-            game.autoShowCards = req.AutoShowCards
-            if !req.AutoShowCards {
-                game.showCards = false
-                _, err = database.Exec("UPDATE rooms SET showCards = $1 WHERE id = $2", false, RoomID)
-                if handleError(w, err) {
-                    return
-                }
-            }
-            sendGameState(game)
-        }
-    }
+		game, exists := games[req.RoomUUID]
+		if exists {
+			game.autoShowCards = req.AutoShowCards
+			if !req.AutoShowCards {
+				game.showCards = false
+				_, err = database.Exec("UPDATE rooms SET showCards = $1 WHERE id = $2", false, RoomID)
+				if handleError(w, err) {
+					return
+				}
+			}
+			sendGameState(game)
+		}
+	}
 }
 
 func showCards(database *sql.DB) http.HandlerFunc {
@@ -253,8 +253,8 @@ func showCards(database *sql.DB) http.HandlerFunc {
 func vote(database *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			UserID int `json:"userID"`
-			RoomID int `json:"roomID"`
+			UserID int    `json:"userID"`
+			RoomID int    `json:"roomID"`
 			Vote   string `json:"vote"`
 		}
 

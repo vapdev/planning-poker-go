@@ -29,28 +29,111 @@ func handleLeaveRoom(game *Game, userID int) {
 }
 
 func handleVote(msg map[string]interface{}, game *Game, userID int) {
-    vote, ok := msg["vote"].(string)
-    if !ok {
-        log.Println("Invalid vote format")
-        return
-    }
+	vote, ok := msg["vote"].(string)
+	if !ok {
+		log.Println("Invalid vote format")
+		return
+	}
 
-    // get db
-    db := getDB()
-    castVote(db, game.roomID, userID, vote)
+	// get db
+	db := getDB()
+	castVote(db, game.roomID, userID, vote)
 
-    for _, player := range game.Players {
-        if player.ID == userID {
-            if player.Voted && player.Vote != nil && *player.Vote == vote {
-                player.Voted = false
-                player.Vote = nil
-            } else {
-                player.Voted = true
-                player.Vote = &vote
-            }
-            break
-        }
-    }
+	for _, player := range game.Players {
+		if player.ID == userID {
+			if player.Voted && player.Vote != nil && *player.Vote == vote {
+				player.Voted = false
+				player.Vote = nil
+			} else {
+				player.Voted = true
+				player.Vote = &vote
+			}
+			break
+		}
+	}
+}
+
+func handleIssueOrder(msg map[string]interface{}, game *Game) {
+	issues, ok := msg["issues"].([]interface{})
+	if !ok {
+		log.Println("Invalid issue format")
+		log.Println("issueData", issues)
+		return
+	}
+
+	db := getDB()
+	for i, issue := range issues {
+		issueUUID, ok := issue.(string)
+		if !ok {
+			log.Println("Invalid issue format")
+			log.Println("issue", issue)
+			return
+		}
+		// get issue whole object  by uuid
+		issue, err := getIssueByUUID(db, game.roomID, issueUUID)
+		if err != nil {
+			log.Println("Error getting issue by UUID")
+			return
+		}
+
+		err = updateIssueOrder(db, game.roomID, issue["id"].(int), i)
+		if err != nil {
+			log.Println("Error updating issue order")
+			return
+		}
+		game.issues[i] = Issue{
+			ID:          issue["id"].(int),
+			UUID:        issueUUID,
+			Title:       issue["title"].(string),
+			Description: issue["description"].(string),
+			Link:        issue["link"].(string),
+			Sequence:    i,
+		}
+
+		if err != nil {
+			log.Println("Error updating issue order")
+			return
+		}
+	}
+}
+
+func handleNewIssue(msg map[string]interface{}, game *Game) {
+	issueData, ok := msg["issue"].(map[string]interface{})
+	if !ok {
+		log.Println("Invalid issue format")
+		return
+	}
+
+	title, _ := issueData["title"].(string)
+	description, _ := issueData["description"].(string)
+	link, _ := issueData["link"].(string)
+
+	// Get DB and create issue
+	db := getDB()
+
+	uuid := generateUuid()
+	id, err := createIssue(db, game.roomID, uuid, IssueRequest{
+		RoomID:      game.roomID,
+		Title:       title,
+		Description: description,
+		Link:        link,
+		Sequence:    len(game.issues),
+	})
+
+	if err != nil {
+		log.Printf("Error creating issue: %v", err)
+		return
+	}
+
+	issue := Issue{
+		ID:          int(id),
+		UUID:        uuid,
+		Title:       title,
+		Description: description,
+		Link:        link,
+	}
+
+	game.issues = append(game.issues, issue)
 }
 
 func handleEmoji(msg map[string]interface{}, game *Game, userID int) {
