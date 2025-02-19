@@ -20,7 +20,6 @@ func setupDatabase() *sql.DB {
 	if err != nil {
 		log.Fatal(err)
 	}
-	createTables(database)
 	return database
 }
 
@@ -102,79 +101,4 @@ func fetchPlayersFromDB(db *sql.DB, roomID int) ([]*Player, error) {
 	}
 
 	return players, nil
-}
-
-func createTables(database *sql.DB) {
-	statements := []string{
-		`CREATE TABLE IF NOT EXISTS rooms (
-			id SERIAL PRIMARY KEY, 
-			uuid UUID, 
-			name varchar(255), 
-			showCards BOOLEAN DEFAULT FALSE, 
-			autoShowCards BOOLEAN DEFAULT FALSE, 
-			deck TEXT,
-			admin INTEGER,
-			lastActive TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-		)`,
-		`CREATE TABLE IF NOT EXISTS users (
-			id SERIAL PRIMARY KEY, 
-			name varchar(255), 
-			uuid UUID, 
-			guest BOOLEAN DEFAULT TRUE,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-		)`,
-		`CREATE TABLE IF NOT EXISTS room_users (
-			room_id INTEGER, 
-			user_id INTEGER, 
-			FOREIGN KEY(room_id) REFERENCES rooms(id), 
-			FOREIGN KEY(user_id) REFERENCES users(id),
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-		)`,
-		`CREATE TABLE IF NOT EXISTS votes (
-			room_id INTEGER, 
-			user_id INTEGER, 
-			vote varchar(5), 
-			FOREIGN KEY(room_id) REFERENCES rooms(id), 
-			FOREIGN KEY(user_id) REFERENCES users(id),
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-		)`,
-		`CREATE TABLE IF NOT EXISTS issues (
-			id SERIAL PRIMARY KEY,
-			room_id INTEGER,
-			uuid UUID,
-			title varchar(255),
-			description TEXT,
-			link TEXT,
-			sequence INTEGER,
-			FOREIGN KEY(room_id) REFERENCES rooms(id),
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-		)`,
-		`CREATE TABLE IF NOT EXISTS issue_votes (
-			issue_id INTEGER,
-			user_id INTEGER,
-			vote varchar(5),
-			FOREIGN KEY(issue_id) REFERENCES issues(id),
-			FOREIGN KEY(user_id) REFERENCES users(id),
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-		)`,
-	}
-
-	for _, stmt := range statements {
-		statement, err := database.Prepare(stmt)
-		if err != nil {
-			log.Fatal(err)
-		}
-		_, err = statement.Exec()
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-	fmt.Println("Tables created successfully.")
 }
