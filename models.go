@@ -7,14 +7,14 @@ import (
 )
 
 type Player struct {
-	ID    int     `json:"id"`
-	UUID  string  `json:"uuid"`
-	Name  string  `json:"name"`
-	Score int     `json:"score"`
-	Voted bool    `json:"voted"`
-	Vote  *string `json:"vote"`
-	Admin bool    `json:"admin"`
-	ws    *websocket.Conn
+	ID          int     `json:"id"`
+	UUID        string  `json:"uuid"`
+	Name        string  `json:"name"`
+	Score       int     `json:"score"`
+	Voted       bool    `json:"voted"`
+	Vote        *string `json:"vote"`
+	Admin       bool    `json:"admin"`
+	connections []*websocket.Conn
 }
 
 type CardOption struct {

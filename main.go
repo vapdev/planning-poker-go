@@ -12,7 +12,7 @@ import (
 
 var (
 	games         = make(map[string]*Game)
-	roomExpiry    = 30 * time.Minute 
+	roomExpiry    = 30 * time.Minute
 	cleanupTicker = time.NewTicker(5 * time.Minute)
 )
 
@@ -23,8 +23,11 @@ func cleanupExpiredRooms() {
 			now := time.Now()
 			for roomUUID, game := range games {
 				if now.Sub(game.lastActive) > roomExpiry {
-					log.Printf("Cleaning up expired room: %s", roomUUID)
-					delete(games, roomUUID)
+					ammountOfPlayers := len(game.Players)
+					if ammountOfPlayers == 0 {
+						log.Printf("Cleaning up room %s", roomUUID)
+						delete(games, roomUUID)
+					}
 				}
 			}
 		}
@@ -33,10 +36,10 @@ func cleanupExpiredRooms() {
 
 func main() {
 	database := setupDatabase()
-
 	log.Println("Setting up routes...")
 	r := mux.NewRouter()
-	r.HandleFunc("/ws/{roomUUID}/{userUUID}", enableCors(handleConnections))
+
+	r.HandleFunc("/ws/{roomUUID}/{userUUID}", enableCors(handleConnections(database)))
 	r.HandleFunc("/createRoom", enableCors(createRoom(database)))
 	r.HandleFunc("/joinRoom", enableCors(joinRoom(database)))
 	r.HandleFunc("/leaveRoom", enableCors(leaveRoom(database)))
@@ -50,5 +53,5 @@ func main() {
 	go cleanupExpiredRooms()
 
 	log.Println("Starting server on " + os.Getenv("PORT"))
-	log.Fatal(http.ListenAndServe(":" + os.Getenv("PORT"), r))
+	log.Fatal(http.ListenAndServe(":"+os.Getenv("PORT"), r))
 }

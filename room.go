@@ -339,7 +339,7 @@ func createRoomInDB(database *sql.DB, userUUID string, roomName string, autoShow
 		return "", "", "", false, nil, err
 	}
 
-	roomUUID, err := generateRoomUUID(database)
+	roomUUID, err := generateRoomUUID()
 	if err != nil {
 		log.Printf("Error generating room UUID: %v", err)
 		return "", "", "", false, nil, err
@@ -395,7 +395,7 @@ func createRoomInDB(database *sql.DB, userUUID string, roomName string, autoShow
 }
 
 func addUserToRoom(database *sql.DB, roomUUID string, userUUID string) (string, string, error) {
-	var userID int64
+	var userID int
 	var err error
 
 	// Try to get the user ID from the provided UUID.
