@@ -17,7 +17,6 @@ var (
 		WriteBufferSize: 1024,
 		CheckOrigin:     func(r *http.Request) bool { return true },
 	}
-	db      *sql.DB
 	gamesMu sync.Mutex // Mutex to protect access to the games map
 )
 
@@ -32,17 +31,23 @@ func handleMessage(msg map[string]interface{}, game *Game, userUUID string, ws *
 		sendGameState(game, nil) // Enviar estado do jogo sem emojis
 	case "newPlayer":
 		handleNewPlayer(msg, game, int(userID), userUUID, ws)
-		sendGameState(game, nil) // Enviar estado do jogo sem emojis
+		sendGameState(game, nil)
 	case "newAdmin":
 		handleNewAdmin(msg, game, int(userID), userUUID, ws)
-		sendGameState(game, nil) // Enviar estado do jogo sem emojis
+		sendGameState(game, nil)
 	case "playerLeft":
 		handleLeaveRoom(game, int(userID))
-		sendGameState(game, nil) // Enviar estado do jogo sem emojis
+		sendGameState(game, nil)
 	case "emoji":
 		handleEmoji(msg, game, int(userID)) // A função `handleEmoji` já chama `sendGameState` com emojis
+	case "newIssue":
+		handleNewIssue(msg, game, db)
+		sendGameState(game, nil)
+	case "issueOrder":
+		handleIssueOrder(msg, game, db)
+		sendGameState(game, nil)
 	default:
-		sendGameState(game, nil) // Enviar estado do jogo sem emojis para outros tipos de mensagem
+		sendGameState(game, nil)
 	}
 	game.lastActive = time.Now()
 }
@@ -66,7 +71,6 @@ func sendGameState(game *Game, emojis ...[]EmojiMessage) {
 		log.Println("Players slice is nil, initializing to empty slice")
 		game.Players = []*Player{}
 	}
-
 	// Update showCards based on votes if autoShowCards is enabled
 	if game.autoShowCards {
 		allVoted := len(game.Players) > 0
@@ -96,6 +100,7 @@ func sendGameState(game *Game, emojis ...[]EmojiMessage) {
 		"admin":         game.admin,
 		"emojis":        emojiMessages, // Include the emojis in the game state
 		"deck":          game.deck,
+		"issues":        game.issues,
 	}
 
 	// Send the game state to each player
