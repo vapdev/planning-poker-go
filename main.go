@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -17,6 +20,10 @@ var (
 )
 
 func cleanupExpiredRooms() {
+	defer func() {
+		log.Println("Cleanup routine stopping...")
+	}()
+	
 	for {
 		select {
 		case <-cleanupTicker.C:
@@ -35,7 +42,19 @@ func cleanupExpiredRooms() {
 }
 
 func main() {
+	// Setup database connection
 	database := setupDatabase()
+	
+	// Ensure database connection is closed when the application exits
+	defer func() {
+		log.Println("Closing database connection...")
+		if err := database.Close(); err != nil {
+			log.Printf("Error closing database connection: %v", err)
+		} else {
+			log.Println("Database connection closed successfully")
+		}
+	}()
+	
 	log.Println("Setting up routes...")
 	r := mux.NewRouter()
 
@@ -50,8 +69,64 @@ func main() {
 	r.HandleFunc("/changeRoomName", enableCors(changeRoomName(database)))
 	r.HandleFunc("/kickPlayer", enableCors(kickPlayer(database)))
 
-	go cleanupExpiredRooms()
+	// Start cleanup routine in a goroutine
+	cleanupDone := make(chan bool)
+	go func() {
+		defer func() {
+			cleanupDone <- true
+		}()
+		cleanupExpiredRooms()
+	}()
 
-	log.Println("Starting server on " + os.Getenv("PORT"))
-	log.Fatal(http.ListenAndServe(":"+os.Getenv("PORT"), r))
+	// Create a server with timeout configuration
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080" // Default port if not specified
+	}
+	
+	srv := &http.Server{
+		Addr:         ":" + port,
+		Handler:      r,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	// Start the server in a goroutine
+	go func() {
+		log.Println("Starting server on port " + port)
+		if err := srv.ListenAndServe(); err != http.ErrServerClosed {
+			log.Fatalf("Server error: %v", err)
+		}
+	}()
+
+	// Setup graceful shutdown
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+
+	// Block until a signal is received
+	<-stop
+	
+	// Stop the cleanup ticker
+	cleanupTicker.Stop()
+	
+	// Create a context with timeout for shutdown
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	
+	// Attempt graceful shutdown
+	log.Println("Shutting down server...")
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Printf("Error during server shutdown: %v", err)
+	}
+	
+	// Wait for cleanup to finish
+	select {
+	case <-cleanupDone:
+		log.Println("Cleanup routine finished")
+	case <-time.After(5 * time.Second):
+		log.Println("Cleanup routine timeout, forcing shutdown")
+	}
+	
+	log.Println("Server gracefully stopped")
 }

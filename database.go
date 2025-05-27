@@ -20,6 +20,19 @@ func setupDatabase() *sql.DB {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	// Set connection pool parameters
+	database.SetMaxOpenConns(25)
+	database.SetMaxIdleConns(25)
+	database.SetConnMaxLifetime(5 * time.Minute)
+	database.SetConnMaxIdleTime(5 * time.Minute)
+
+	// Verify connection
+	if err := database.Ping(); err != nil {
+		log.Fatalf("Unable to connect to database: %v", err)
+	}
+
+	log.Println("Successfully connected to the database")
 	return database
 }
 
