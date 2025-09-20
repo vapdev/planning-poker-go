@@ -12,10 +12,10 @@ import (
 )
 
 func setupDatabase() *sql.DB {
-	err := godotenv.Load(".env")
-	if err != nil {
-		log.Printf("Error loading .env file")
-	}
+	// err := godotenv.Load(".env")
+	// if err != nil {
+	// 	log.Printf("Error loading .env file")
+	// }
 	database, err := sql.Open("pgx", os.Getenv("DATABASE_URL"))
 	if err != nil {
 		log.Fatal(err)
