@@ -14,6 +14,14 @@ DB_NAME=${DB_NAME:-planning}
 
 DATABASE_URL="postgres://$DB_USER:$DB_PASSWORD@$DB_HOST:$DB_PORT/$DB_NAME?sslmode=disable"
 
+# Instalar Go se não existir
+if ! command -v go &> /dev/null; then
+    echo "Instalando Go..."
+    sudo yum update -y
+    sudo yum install -y golang
+    export PATH=$PATH:/usr/bin/go
+fi
+
 # Instalar Goose se não existir
 if ! command -v goose &> /dev/null; then
     echo "Instalando Goose..."
